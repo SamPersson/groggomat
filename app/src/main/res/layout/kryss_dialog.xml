@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<GridLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:columnCount="2">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textAppearance="?android:attr/textAppearanceLarge"
+        android:text="Kryssa för Sam Persson"
+        android:id="@+id/title"
+        android:layout_row="0"
+        android:layout_column="0"
+        android:layout_columnSpan="2"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginTop="5dp"
+        />
+
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Svag: 0"
+        android:id="@+id/weak"
+        android:layout_row="2"
+        android:layout_column="0"
+        android:layout_gravity="fill_horizontal"
+        android:layout_columnWeight="1"
+        android:backgroundTint="#ff8e9103"
+        android:layout_margin="5dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textAppearance="?android:attr/textAppearanceSmall"
+        android:text="Håll inne för att ångra"
+        android:id="@+id/textView2"
+        android:layout_row="1"
+        android:layout_column="0"
+        android:layout_columnSpan="2"
+        android:layout_gravity="center_horizontal"
+        android:layout_margin="5dp" />
+
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Stark: 0"
+        android:id="@+id/strong"
+        android:layout_row="2"
+        android:layout_column="1"
+        android:layout_gravity="fill_horizontal"
+        android:layout_columnWeight="1"
+        android:backgroundTint="#ff906500"
+        android:layout_margin="5dp"/>
+
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Delüx: 0"
+        android:id="@+id/delux"
+        android:layout_row="3"
+        android:layout_column="0"
+        android:layout_gravity="fill_horizontal"
+        android:backgroundTint="#ff051e76"
+        android:layout_margin="5dp"/>
+
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Mat: 0"
+        android:id="@+id/food"
+        android:layout_row="3"
+        android:layout_column="1"
+        android:layout_gravity="fill_horizontal"
+        android:backgroundTint="#ff962000"
+        android:layout_margin="5dp"/>
+
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Kryssa"
+        android:id="@+id/kryssa"
+        android:layout_row="4"
+        android:layout_gravity="center_horizontal"
+        android:layout_columnSpan="2"
+        android:layout_column="0"
+        android:backgroundTint="#b300790a"
+        android:layout_marginTop="20dp"
+        android:layout_margin="5dp"/>
+</GridLayout>

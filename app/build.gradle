@@ -1,0 +1,47 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    compileSdkVersion 22
+    buildToolsVersion "22.0.1"
+
+
+    defaultConfig {
+        applicationId "org.altekamereren.groggomat"
+        minSdkVersion 16
+        targetSdkVersion 22
+        versionCode 1
+        versionName "1.0"
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_7
+        targetCompatibility JavaVersion.VERSION_1_7
+    }
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+}
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-android-extensions:$kotlin_version"
+    }
+}
+
+dependencies {
+    compile fileTree(include: ['*.jar'], dir: 'libs')
+    compile 'com.android.support:appcompat-v7:22.2.1'
+    compile "org.jetbrains.kotlin:kotlin-android-sdk-annotations:$kotlin_version"
+    compile "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    compile 'org.jetbrains.anko:anko:0.6.2-15s'
+}
+
