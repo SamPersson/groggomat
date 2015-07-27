@@ -4,10 +4,15 @@ import android.app.Activity
 import android.app.DialogFragment
 import android.app.ListActivity
 import android.app.ListFragment
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.database.DataSetObserver
+import android.database.sqlite.SQLiteDatabase
 import android.graphics.Color
 import android.graphics.Typeface
+import android.net.wifi.p2p.*
 import android.os.Bundle
 import android.support.v4.app.FragmentActivity
 import android.text.Editable
@@ -15,36 +20,227 @@ import android.text.TextWatcher
 import android.view.*
 import android.widget.*
 import android.support.v7.appcompat
+import com.fasterxml.jackson.core.JsonGenerator
+import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.core.type.TypeReference
 import org.jetbrains.anko.*
+import com.fasterxml.jackson.module.kotlin.*
 
 import kotlinx.android.synthetic.activity_main.*
 import org.jetbrains.anko.db.*
+import java.io.InputStream
+import java.io.OutputStream
+import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.Socket
 import java.util.*
+import java.util.concurrent.Future
 
+val PORT = 14156
+
+data class DeviceLatestKryss(val device:String, val latestKryss:Long)
+data class KryssPair(val my:DeviceLatestKryss, val their:DeviceLatestKryss?)
+data class SendKryss(val id:Long, val device:String, val type:Int, val count:Int, val time:Long, val kamerer:Int) {
+    companion object {
+        val parser = rowParser { id:Long, device:String, type:Int, count:Int, time:Long, kamerer:Int -> SendKryss(id, device, type, count, time, kamerer) }
+    }
+    public fun insert(db: SQLiteDatabase) {
+        db.insert("Kryss",
+                "real_id" to id,
+                "device" to device,
+                "type" to type,
+                "count" to count,
+                "time" to time,
+                "kamerer" to kamerer
+        )
+    }
+}
+data class MyKryss(val device : String, val type:Int, val count:Int, val time:Long, val kamerer:Int) {
+    public fun insert(db: SQLiteDatabase) {
+        db.insert("Kryss",
+                "device" to device,
+                "type" to type,
+                "count" to count,
+                "time" to time,
+                "kamerer" to kamerer
+        )
+    }
+}
 
 public class MainActivity : Activity(), AnkoLogger {
+    var intentFilter : IntentFilter = IntentFilter()
+    var receiver: WiFiDirectBroadcastReceiver? = null
+    var deviceId: String = ""
 
     data class Kryss(var kamerer:Int, var type:Int, var count:Int)
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super<Activity>.onCreate(savedInstanceState)
 
-        database.use {
-            val kryssParser = rowParser { kamerer:Int, type:Int, count:Int -> Kryss(kamerer, type, count)}
-            for(kryss in select("Kryss", "kamerer", "type", "sum(count)").groupBy("kamerer, type").parseList(kryssParser)) {
-                Kamerer.kamerers[kryss.kamerer].kryss[kryss.type] += kryss.count
-            }
+        val prefs = getPreferences(Context.MODE_PRIVATE)
+        deviceId = prefs.getString("deviceId","")
+        if(deviceId == "") {
+            deviceId = UUID.randomUUID().toString()
+            val editor = prefs.edit()
+            editor.putString("deviceId", deviceId)
+            editor.commit()
         }
+
+        calculateKryss()
+
+        intentFilter = IntentFilter()
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
+
+        val manager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
+        val channel = manager.initialize(this, getMainLooper(), null)
+        receiver = WiFiDirectBroadcastReceiver(manager, channel, this)
 
         getFragmentManager()
                 .beginTransaction()
                 .replace(android.R.id.content, KamererListFragment())
                 .commit()
+
+        startServer()
     }
+
+    private fun calculateKryss() {
+        database.use {
+            val kryssParser = rowParser { kamerer: Int, type: Int, count: Int -> Kryss(kamerer, type, count) }
+            for (kryss in select("Kryss", "kamerer", "type", "sum(count)").groupBy("kamerer, type").parseList(kryssParser)) {
+                Kamerer.kamerers[kryss.kamerer].kryss[kryss.type] = kryss.count
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super<Activity>.onDestroy()
+        serverTask?.cancel(true)
+    }
+
+    override fun onResume() {
+        super<Activity>.onResume()
+        registerReceiver(receiver, intentFilter)
+    }
+
+    override fun onPause() {
+        super<Activity>.onPause()
+        unregisterReceiver(receiver)
+    }
+
+    fun syncKryss(outputStream:OutputStream, inputStream:InputStream) {
+        database.use {
+            val myLatestKryss =
+                    select("Kryss", "device", "ifnull(max(real_id)", "max(_id))")
+                    .groupBy("device")
+                    .parseList(rowParser({device:String, id:Long -> DeviceLatestKryss(device, id)}))
+
+            val mapper = jacksonObjectMapper()
+            mapper.configure(JsonGenerator.Feature.AUTO_CLOSE_TARGET, false)
+            mapper.configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, false)
+
+            info("Sending ${myLatestKryss}")
+            mapper.writeValue(outputStream, myLatestKryss)
+            outputStream.flush()
+
+            val jsonParser = mapper.getFactory().createParser(inputStream)
+            val theirLatestKryss = jsonParser.readValueAs<List<DeviceLatestKryss>>(object: TypeReference<List<DeviceLatestKryss>>(){})
+            info("Received ${theirLatestKryss}")
+
+            val kryssPairs = myLatestKryss.map { my -> KryssPair(my,theirLatestKryss.firstOrNull({their -> their.device == my.device}) ) }
+
+            val newerKryss = kryssPairs.filter { p -> p.their == null || p.my.latestKryss > p.their.latestKryss }.map { p -> DeviceLatestKryss(p.my.device, p.their?.latestKryss ?: 0) }
+
+            val kryssToSend = newerKryss.flatMap { newer ->
+                select("Kryss", "ifnull(real_id, _id)", "device", "type", "count", "time", "kamerer")
+                        .where("device = {device} and ifnull(real_id, _id) > {latestKryss}",
+                                "device" to newer.device,
+                                "latestKryss" to newer.latestKryss)
+                        .parseList(SendKryss.parser)
+            }
+
+            info("Sending ${kryssToSend.size()} kryss")
+            mapper.writeValue(outputStream, kryssToSend)
+
+            val theirKryss = jsonParser.readValueAs<List<SendKryss>>(object: TypeReference<List<SendKryss>>(){})
+            info("Received ${theirKryss.size()} kryss")
+            for(kryss in theirKryss) {
+                kryss.insert(this)
+            }
+            info("Sync complete")
+        }
+    }
+
+    private var serverTask: Future<Unit>? = null
+
+    fun startServer() {
+        serverTask = async {
+            ServerSocket(PORT).use { serverSocket ->
+                info("Server listening on port $PORT")
+                while (serverTask?.isCancelled() == false) {
+                    try {
+                        serverSocket.accept().use { client ->
+                            client.setSoTimeout(1000)
+
+                            info("Client connected, syncing")
+                            syncKryss(client.getOutputStream(), client.getInputStream())
+                        }
+                        uiThread {
+                            toast("Sync done as server")
+                            calculateKryss()
+                            val list = getFragmentManager().findFragmentById(android.R.id.content) as KamererListFragment
+                            (list.getListAdapter() as ArrayAdapter<*>).notifyDataSetInvalidated()
+                        }
+                    } catch(e: Exception) {
+                        if(e !is InterruptedException){
+                            error(e.toString())
+                            uiThread {
+                                toast("Error syncing: $e")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun startClient(host:String) {
+        async {
+            try{
+                info("Starting Client")
+                Socket().use { socket ->
+                    socket.bind(null)
+                    socket.connect(InetSocketAddress(host, PORT), 500)
+                    socket.setSoTimeout(1000)
+                    info("Connected to server")
+                    syncKryss(socket.getOutputStream(), socket.getInputStream())
+                }
+                uiThread {
+                    toast("Sync done as client")
+                    calculateKryss()
+                    val list = getFragmentManager().findFragmentById(android.R.id.content) as KamererListFragment
+                    (list.getListAdapter() as ArrayAdapter<*>).notifyDataSetInvalidated()
+                }
+            } catch(e:Exception) {
+                error(e.toString())
+                uiThread {
+                    toast("Error syncing: $e")
+                }
+            }
+
+        }
+    }
+
+    private var menu: Menu? = null
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.menu_main, menu)
+        this.menu = menu
+        updateMenu()
         return true
     }
 
@@ -54,12 +250,54 @@ public class MainActivity : Activity(), AnkoLogger {
         // as you specify a parent activity in AndroidManifest.xml.
         val id = item!!.getItemId()
 
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
+        val wifiP2pInfo = wifiP2pInfo
+        val receiver = receiver
+        if(id == R.id.action_connect && receiver != null) {
+            if (wifiP2pInfo?.groupFormed == true) {
+                //Disconnect
+                receiver.manager.removeGroup(receiver.channel, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() {
+                    }
+
+                    override fun onFailure(reason: Int) {
+                        toast("Failed to disconenct: $reason")
+                    }
+                })
+            } else {
+                searchingForPeers = true
+                toast("Searching for peers")
+                receiver.manager.discoverPeers(receiver.channel, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() {
+                    }
+
+                    override fun onFailure(reason: Int) {
+                        searchingForPeers = false
+                        toast("Failed to discover peers: $reason")
+                    }
+                })
+            }
+        }
+
+        if (id == R.id.action_sync && wifiP2pInfo != null) {
+            startClient(wifiP2pInfo.groupOwnerAddress.getHostAddress())
             return true
         }
 
         return super<Activity>.onOptionsItemSelected(item)
+    }
+
+    private fun connectToDevice(d: WifiP2pDevice) {
+        val config = WifiP2pConfig();
+        config.deviceAddress = d.deviceAddress;
+        receiver?.manager?.connect(receiver?.channel, config, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                toast("Connected to ${d.deviceAddress}")
+            }
+
+            override fun onFailure(reason: Int) {
+                toast("Failed to connect: $reason")
+            }
+        })
     }
 
     fun onKryssa(kamerer:Kamerer, kryss:Array<Int>) {
@@ -69,9 +307,7 @@ public class MainActivity : Activity(), AnkoLogger {
         //async {
             val result = database.use {
                 for(i in kryss.indices.filter { i -> kryss[i] > 0 }) {
-                    DbKryss(_id=0,
-                            device = "device",
-                            real_id = null,
+                    MyKryss(device = deviceId,
                             type = i,
                             count = kryss[i],
                             time = System.currentTimeMillis(),
@@ -82,75 +318,45 @@ public class MainActivity : Activity(), AnkoLogger {
         //}
     }
 
-    public class KamererListFragment : ListFragment() {
+    private var searchingForPeers: Boolean = false
 
-
-
-        override fun onAttach(activity: Activity?) {
-            super.onAttach(activity)
-
-            setListAdapter(object:ArrayAdapter<Kamerer>(activity, -1, Kamerer.kamerers){
-                public inline fun <T: Any> view(inlineOptions(InlineOption.ONLY_LOCAL_RETURN) f: UiHelper.() -> T): T {
-                    var view: T? = null
-                    getContext().UI { view = f() }
-                    return view!!
-                }
-
-                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View? {
-                    val kamerer = Kamerer.kamerers[position];
-
-                    val view = view {
-                        linearLayout {
-                            textView {
-                                text = kamerer.name
-                                textSize = 16f
-                                typeface = Typeface.create("", Typeface.BOLD)
-                            }.layoutParams(width = 0) {
-                                margin=dip(10)
-                                weight=1f
-                                gravity=Gravity.CENTER_VERTICAL
-                            }
-
-                            for(i in kamerer.kryss.indices) {
-                                textView {
-                                    text = kamerer.kryss[i].toString()
-                                    textSize = 16f
-                                    typeface = Typeface.create("", Typeface.BOLD)
-                                    backgroundColor = Color.parseColor(KryssType.types[i].color)
-                                    padding = dip(10)
-                                }.layoutParams(width = wrapContent) {}
-                            }
-                        }
-                    }
-
-                    return view
-                }
-
-                override fun isEnabled(position: Int): Boolean {
-                    return true;
-                }
-            })
-        }
-
-        override fun onCreate(savedInstanceState: Bundle?) {
-            super.onCreate(savedInstanceState)
-        }
-
-        override fun onListItemClick(l: ListView?, v: View?, position: Int, id: Long) {
-            val ft = getFragmentManager().beginTransaction();
-            val prev = getFragmentManager().findFragmentByTag("dialog");
-            if (prev != null) {
-                ft.remove(prev);
+    fun peersReceived(peers: List<WifiP2pDevice>) {
+        if(searchingForPeers) {
+            searchingForPeers = false
+            if (peers.size() >= 0) {
+                selector("Which peer?", peers.map { d -> d.deviceName }.toArrayList(), { i ->
+                    connectToDevice(peers[i])
+                })
+            } else {
+                toast("No peers found")
             }
-            ft.addToBackStack(null);
-
-            // Create and show the dialog.
-            val newFragment = KryssDialogFragment().withArguments("kamerer" to position);
-            newFragment.show(ft, "dialog");
         }
     }
 
+    private var wifiP2pInfo: WifiP2pInfo? = null
+    fun connected(info: WifiP2pInfo) {
+        this.wifiP2pInfo = info
+        updateMenu()
+        if(info.groupFormed){
+            toast("Connected")
+        } else {
+            toast("Disconnected")
+        }
+        if(info.groupFormed && !info.isGroupOwner) {
+            startClient(info.groupOwnerAddress.getHostAddress())
+        }
+    }
 
+    fun updateMenu() {
+        val wifiP2pInfo = wifiP2pInfo
+        if(wifiP2pInfo != null) {
+            menu?.findItem(R.id.action_connect)?.setTitle(if (wifiP2pInfo.groupFormed) "Koppla från" else "Anslut")
+            menu?.findItem(R.id.action_sync)?.setVisible(wifiP2pInfo.groupFormed && !wifiP2pInfo.isGroupOwner)
+            if (wifiP2pInfo.groupFormed && !wifiP2pInfo.isGroupOwner) {
+                menu?.findItem(R.id.action_sync)?.setTitle("Synka ${wifiP2pInfo.groupOwnerAddress.getHostAddress()}")
+            }
+        }
+    }
 }
 
 data class KryssType(val name:String, val color:String) {
@@ -168,3 +374,4 @@ class Kamerer(val name:String) {
 
     val kryss = Array(KryssType.types.size(), { i -> 0 })
 }
+

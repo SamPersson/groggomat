@@ -45,25 +45,3 @@ val Context.database: MyDatabaseOpenHelper
 val Fragment.database: MyDatabaseOpenHelper
     get() = MyDatabaseOpenHelper.getInstance(getActivity().getApplicationContext())
 
-data class DbKryss(val _id : Long, val device : String, val real_id : Long?, val type:Int, val count:Int, val time:Long, val kamerer:Int) {
-    public fun insert(db: SQLiteDatabase) {
-        if(real_id != null) {
-            db.insert("Kryss",
-                    "device" to device,
-                    "real_id" to real_id,
-                    "type" to type,
-                    "count" to count,
-                    "time" to time,
-                    "kamerer" to kamerer
-            )
-        } else {
-            db.insert("Kryss",
-                    "device" to device,
-                    "type" to type,
-                    "count" to count,
-                    "time" to time,
-                    "kamerer" to kamerer
-            )
-        }
-    }
-}
