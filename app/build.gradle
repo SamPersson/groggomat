@@ -5,7 +5,6 @@ android {
     compileSdkVersion 22
     buildToolsVersion "22.0.1"
 
-
     defaultConfig {
         applicationId "org.altekamereren.groggomat"
         minSdkVersion 16
@@ -40,6 +39,7 @@ buildscript {
         classpath "org.jetbrains.kotlin:kotlin-android-extensions:$kotlin_version"
     }
 }
+
 
 dependencies {
     compile fileTree(include: ['*.jar'], dir: 'libs')

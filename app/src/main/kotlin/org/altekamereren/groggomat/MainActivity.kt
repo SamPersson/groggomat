@@ -40,30 +40,58 @@ val PORT = 14156
 
 data class DeviceLatestKryss(val device:String, val latestKryss:Long)
 data class KryssPair(val my:DeviceLatestKryss, val their:DeviceLatestKryss?)
-data class SendKryss(val id:Long, val device:String, val type:Int, val count:Int, val time:Long, val kamerer:Int) {
+data class SendKryss(val id:Long?, val device:String, val type:Int, val count:Int, val time:Long, val kamerer:Int, val replaces_id:Long?, val replaces_device:String?) {
     companion object {
-        val parser = rowParser { id:Long, device:String, type:Int, count:Int, time:Long, kamerer:Int -> SendKryss(id, device, type, count, time, kamerer) }
+        val table = "Kryss k"
+        val selectList = arrayOf("ifnull(real_id, _id)", "device", "type", "count", "time", "kamerer", "replaces_id", "replaces_device")
+        val parser = rowParser { id:Long, device:String, type:Int, count:Int, time:Long, kamerer:Int, replaces_id:Any?, replaces_device:Any? ->
+            SendKryss(id, device, type, count, time, kamerer, if(replaces_id is Long) replaces_id else null, if(replaces_device is String) replaces_device else null)
+        }
     }
     public fun insert(db: SQLiteDatabase) {
-        db.insert("Kryss",
-                "real_id" to id,
-                "device" to device,
-                "type" to type,
-                "count" to count,
-                "time" to time,
-                "kamerer" to kamerer
-        )
-    }
-}
-data class MyKryss(val device : String, val type:Int, val count:Int, val time:Long, val kamerer:Int) {
-    public fun insert(db: SQLiteDatabase) {
-        db.insert("Kryss",
-                "device" to device,
-                "type" to type,
-                "count" to count,
-                "time" to time,
-                "kamerer" to kamerer
-        )
+        if(id != null) {
+            if (replaces_id != null && replaces_device != null) {
+                db.insert("Kryss",
+                        "real_id" to id,
+                        "device" to device,
+                        "type" to type,
+                        "count" to count,
+                        "time" to time,
+                        "kamerer" to kamerer,
+                        "replaces_id" to replaces_id,
+                        "replaces_device" to replaces_device
+                )
+            } else {
+                db.insert("Kryss",
+                        "real_id" to id,
+                        "device" to device,
+                        "type" to type,
+                        "count" to count,
+                        "time" to time,
+                        "kamerer" to kamerer
+                )
+            }
+        } else {
+            if (replaces_id != null && replaces_device != null) {
+                db.insert("Kryss",
+                        "device" to device,
+                        "type" to type,
+                        "count" to count,
+                        "time" to time,
+                        "kamerer" to kamerer,
+                        "replaces_id" to replaces_id,
+                        "replaces_device" to replaces_device
+                )
+            } else {
+                db.insert("Kryss",
+                        "device" to device,
+                        "type" to type,
+                        "count" to count,
+                        "time" to time,
+                        "kamerer" to kamerer
+                )
+            }
+        }
     }
 }
 
@@ -110,7 +138,7 @@ public class MainActivity : Activity(), AnkoLogger {
     private fun calculateKryss() {
         database.use {
             val kryssParser = rowParser { kamerer: Int, type: Int, count: Int -> Kryss(kamerer, type, count) }
-            for (kryss in select("Kryss", "kamerer", "type", "sum(count)").groupBy("kamerer, type").parseList(kryssParser)) {
+            for (kryss in select("Kryss k", "kamerer", "type", "sum(count)").where("not exists (select * from Kryss r where r.replaces_id = ifnull(k.real_id, k._id) and r.replaces_device = k.device)").groupBy("kamerer, type").parseList(kryssParser)) {
                 Kamerer.kamerers[kryss.kamerer].kryss[kryss.type] = kryss.count
             }
         }
@@ -155,7 +183,7 @@ public class MainActivity : Activity(), AnkoLogger {
             val newerKryss = kryssPairs.filter { p -> p.their == null || p.my.latestKryss > p.their.latestKryss }.map { p -> DeviceLatestKryss(p.my.device, p.their?.latestKryss ?: 0) }
 
             val kryssToSend = newerKryss.flatMap { newer ->
-                select("Kryss", "ifnull(real_id, _id)", "device", "type", "count", "time", "kamerer")
+                select(SendKryss.table, *SendKryss.selectList)
                         .where("device = {device} and ifnull(real_id, _id) > {latestKryss}",
                                 "device" to newer.device,
                                 "latestKryss" to newer.latestKryss)
@@ -191,8 +219,7 @@ public class MainActivity : Activity(), AnkoLogger {
                         uiThread {
                             toast("Sync done as server")
                             calculateKryss()
-                            val list = getFragmentManager().findFragmentById(android.R.id.content) as KamererListFragment
-                            (list.getListAdapter() as ArrayAdapter<*>).notifyDataSetInvalidated()
+                            updateKryssLists()
                         }
                     } catch(e: Exception) {
                         if(e !is InterruptedException){
@@ -221,8 +248,7 @@ public class MainActivity : Activity(), AnkoLogger {
                 uiThread {
                     toast("Sync done as client")
                     calculateKryss()
-                    val list = getFragmentManager().findFragmentById(android.R.id.content) as KamererListFragment
-                    (list.getListAdapter() as ArrayAdapter<*>).notifyDataSetInvalidated()
+                    updateKryssLists()
                 }
             } catch(e:Exception) {
                 error(e.toString())
@@ -300,22 +326,14 @@ public class MainActivity : Activity(), AnkoLogger {
         })
     }
 
-    fun onKryssa(kamerer:Kamerer, kryss:Array<Int>) {
-        val list = getFragmentManager().findFragmentById(android.R.id.content) as KamererListFragment
-        (list.getListAdapter() as ArrayAdapter<*>).notifyDataSetInvalidated()
-
-        //async {
-            val result = database.use {
-                for(i in kryss.indices.filter { i -> kryss[i] > 0 }) {
-                    MyKryss(device = deviceId,
-                            type = i,
-                            count = kryss[i],
-                            time = System.currentTimeMillis(),
-                            kamerer = Kamerer.kamerers.indexOf(kamerer)
-                    ).insert(this)
-                }
-            }
-        //}
+    fun updateKryssLists() {
+        calculateKryss()
+        val fragment = getFragmentManager().findFragmentById(android.R.id.content)
+        if(fragment is KamererListFragment) {
+            (fragment.getListAdapter() as ArrayAdapter<*>).notifyDataSetChanged()
+        } else if(fragment is KamererFragment) {
+            fragment.updateData()
+        }
     }
 
     private var searchingForPeers: Boolean = false
@@ -359,9 +377,14 @@ public class MainActivity : Activity(), AnkoLogger {
     }
 }
 
-data class KryssType(val name:String, val color:String) {
+data class KryssType(val name:String, val color:Int, val alcohol:Double) {
     companion object {
-        val types = arrayOf(KryssType("Svag", "#ff8e9103"), KryssType("Vanlig", "#ff906500"), KryssType("Delüx", "#ff051e76"), KryssType("Mat", "#ff962000"))
+        val types = arrayOf(
+                KryssType("Svag", 0xff8e9103.toInt(), 0.2),
+                KryssType("Vanlig", 0xff906500.toInt(), 0.4),
+                KryssType("Delüx", 0xff051e76.toInt(), 0.4),
+                KryssType("Mat", 0xff962000.toInt(), 0.0)
+        )
     }
 }
 
@@ -372,6 +395,9 @@ class Kamerer(val name:String) {
                 .map({n -> Kamerer(n)})
     }
 
+    var alcohol = 0.0
     val kryss = Array(KryssType.types.size(), { i -> 0 })
+    val weight = 60
+    val man = true
 }
 

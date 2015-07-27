@@ -6,7 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import org.jetbrains.anko.*
 import org.jetbrains.anko.db.*
 
-class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatabase", null, 2), AnkoLogger{
+class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatabase", null, 3), AnkoLogger{
 
     companion object {
         private var instance: MyDatabaseOpenHelper? = null
@@ -28,7 +28,9 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
                 "type" to INTEGER + NOT_NULL,
                 "count" to INTEGER + NOT_NULL,
                 "time" to INTEGER + NOT_NULL,
-                "kamerer" to INTEGER + NOT_NULL)
+                "kamerer" to INTEGER + NOT_NULL,
+                "replaces_id" to INTEGER,
+                "replaces_device" to TEXT)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
