@@ -34,7 +34,7 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.*
-import java.util.concurrent.Future
+import java.util.concurrent.*
 
 val PORT = 14156
 
@@ -100,8 +100,9 @@ public class MainActivity : Activity(), AnkoLogger {
     var receiver: WiFiDirectBroadcastReceiver? = null
     var deviceId: String = ""
 
-    data class Kryss(var kamerer:Int, var type:Int, var count:Int)
+    data class Kryss(val kamerer:Int, val type:Int, val count:Int, val time:Long)
 
+    private var updater: ScheduledFuture<*>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super<Activity>.onCreate(savedInstanceState)
@@ -137,9 +138,22 @@ public class MainActivity : Activity(), AnkoLogger {
 
     private fun calculateKryss() {
         database.use {
-            val kryssParser = rowParser { kamerer: Int, type: Int, count: Int -> Kryss(kamerer, type, count) }
-            for (kryss in select("Kryss k", "kamerer", "type", "sum(count)").where("not exists (select * from Kryss r where r.replaces_id = ifnull(k.real_id, k._id) and r.replaces_device = k.device)").groupBy("kamerer, type").parseList(kryssParser)) {
-                Kamerer.kamerers[kryss.kamerer].kryss[kryss.type] = kryss.count
+            val kryssParser = rowParser { kamerer: Int, type: Int, count: Int, time:Long -> Kryss(kamerer, type, count, time) }
+            for(kamerer in Kamerer.kamerers) {
+                for(i in kamerer.kryss.indices) {
+                    kamerer.kryss[i] = 0
+                }
+                kamerer.alcohol = 0.0
+            }
+            val time = System.currentTimeMillis()
+            for (kryss in select("Kryss k", "kamerer", "type", "count", "time").where("not exists (select * from Kryss r where r.replaces_id = ifnull(k.real_id, k._id) and r.replaces_device = k.device)").parseList(kryssParser)) {
+                val kamerer = Kamerer.kamerers[kryss.kamerer]
+                val kryssType = KryssType.types[kryss.type]
+                kamerer.kryss[kryss.type] += kryss.count
+                kamerer.alcohol += Math.min(1.0, (time-kryss.time)/(30*60*1000.0)) * 10.0*Math.max(0.0,
+                        0.806 * kryssType.alcohol * 25.0 * 0.1 * 1.2 * kryss.count
+                        / ((if(kamerer.male) 0.58 else 0.49) * kamerer.weight)
+                        - (if(kamerer.male) 0.015 else 0.017)*(time-kryss.time)/3600000)
             }
         }
     }
@@ -152,11 +166,14 @@ public class MainActivity : Activity(), AnkoLogger {
     override fun onResume() {
         super<Activity>.onResume()
         registerReceiver(receiver, intentFilter)
+        val sch = Executors.newScheduledThreadPool(1) as ScheduledThreadPoolExecutor
+        updater = sch.scheduleAtFixedRate({ uiThread { updateKryssLists() }}, 5, 5, TimeUnit.SECONDS) ;
     }
 
     override fun onPause() {
         super<Activity>.onPause()
         unregisterReceiver(receiver)
+        updater?.cancel(true)
     }
 
     fun syncKryss(outputStream:OutputStream, inputStream:InputStream) {
@@ -397,7 +414,7 @@ class Kamerer(val name:String) {
 
     var alcohol = 0.0
     val kryss = Array(KryssType.types.size(), { i -> 0 })
-    val weight = 60
-    val man = true
+    val weight = 91
+    val male = true
 }
 

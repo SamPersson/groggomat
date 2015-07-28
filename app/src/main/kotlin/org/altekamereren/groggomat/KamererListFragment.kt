@@ -19,7 +19,6 @@ import java.util.*
 
 public class KamererListFragment : ListFragment() {
 
-
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
 
@@ -64,7 +63,7 @@ public class KamererListFragment : ListFragment() {
                         }
 
                        textView {
-                           text = kamerer.alcohol.toString()
+                           text = java.lang.String.format("%.2f", kamerer.alcohol)
                            textSize = 16f
                            padding = dip(10)
                        }.layoutParams(width = wrapContent, height = matchParent)
