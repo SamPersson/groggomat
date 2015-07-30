@@ -40,11 +40,11 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
                 "male" to INTEGER + NOT_NULL,
                 "updated" to INTEGER + NOT_NULL)
 
-        val r = Random()
+        /*val r = Random()
         for(i in 0..9999) {
             Kryss(i.toLong(), "test", r.nextInt(4), 1 + r.nextInt(4), System.currentTimeMillis() - r.nextInt(1000*3600*24*10), r.nextInt(25).toLong(), if(r.nextInt(30)==0 && i > 100) (i - r.nextInt(99) - 1).toLong() else null, "test")
                 .insert(db)
-        }
+        }*/
 
         var men = arrayOf("Jesper Hasselquist", "Damir Basic Knezevic", "Douglas Clifford", "Jens Ogniewski", "Johan Levin", "Philip Jönsson", "Peder Andersson", "Peter Swartling", "Johan Ruuskanen", "Pontus Persson", "Sam Persson", "Gustaf Malmberg", "Oskar Fransén", "Philip Ljungkvist", "Tobias Petersen", "Joakim Arnsby", "Lukas Arnsby", "Olov Ferm")
         var women = arrayOf("Felicia Ardenmark Strand", "Jules Hanley", "Annica Ericsson", "Hanna Ekström", "Viktoria Alm", "Rebecka Erntell", "Christine Persson")
@@ -56,9 +56,9 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
             db.insert("Kamerer", "_id" to i+men.size(), "name" to women[i], "male" to 0, "updated" to 1/*, "weight" to r.nextDouble()*40 + 40*/)
         }
 
-        db.execSQL("create index kryss_replaces on Kryss(replaces_id, replaces_device) where replaces_id is not null or replaces_device is not null")
+        /*db.execSQL("create index kryss_replaces on Kryss(replaces_id, replaces_device) where replaces_id is not null or replaces_device is not null")
         db.execSQL("create index real_id on Kryss(real_id, device) where real_id is not null")
-        db.execSQL("create index kamerer_list on Kryss(kamerer, time desc)")
+        db.execSQL("create index kamerer_list on Kryss(kamerer, time desc)")*/
 
         info("DB created")
     }

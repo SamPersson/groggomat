@@ -58,7 +58,8 @@ public class KryssDialogFragment() : DialogFragment() {
 
             database.use {
                 for(k in storeKryss) {
-                    k.insert(this)
+                    val stored = k.insert(this)
+                    (ctx as MainActivity).kryssCache.add(stored)
                 }
             }
 

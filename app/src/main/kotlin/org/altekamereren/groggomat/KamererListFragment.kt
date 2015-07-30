@@ -37,10 +37,17 @@ public class KamererListFragment : ListFragment() {
         }
     }
 
+    private var kamerererByName: List<Kamerer> = ArrayList<Kamerer>()
+
+    fun updateData() {
+        kamerererByName = (ctx as MainActivity).kamererer.values().sortBy({k -> k.name})
+        (getListAdapter() as ArrayAdapter<*>).notifyDataSetChanged()
+    }
+
     override fun onAttach(activity: Activity?) {
         super.onAttach(activity)
 
-        val kamerererByName = (activity as MainActivity).kamererer.values().sortBy({k -> k.name})
+        kamerererByName = (ctx as MainActivity).kamererer.values().sortBy({k -> k.name})
 
         setListAdapter(object: ArrayAdapter<Kamerer>(activity, -1, kamerererByName){
             public inline fun <T: Any> view(inlineOptions(InlineOption.ONLY_LOCAL_RETURN) f: UiHelper.() -> T): T {

@@ -102,6 +102,10 @@ public class KamererFragment : Fragment()
                                             val d = parseDouble(weightInput.text.toString())
                                             if(d != null) {
                                                 kamerer.weight = d
+                                                kamerer.updated = System.currentTimeMillis()
+                                                database.use {
+                                                    kamerer.update(this)
+                                                }
                                                 dialog.dismiss()
                                                 (ctx as MainActivity).updateKryssLists(false)
                                             }

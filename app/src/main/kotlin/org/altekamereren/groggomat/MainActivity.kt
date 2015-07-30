@@ -51,7 +51,7 @@ data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, v
             Kryss(id, device, type, count, time, kamerer, if(replaces_id is Long) replaces_id else null, if(replaces_device is String) replaces_device else null)
         }
     }
-    public fun insert(db: SQLiteDatabase) {
+    public fun insert(db: SQLiteDatabase) : Kryss {
         if(id != null) {
             if (replaces_id != null && replaces_device != null) {
                 db.insert("Kryss",
@@ -74,8 +74,9 @@ data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, v
                         "kamerer" to kamerer
                 )
             }
+            return this
         } else {
-            if (replaces_id != null && replaces_device != null) {
+            val id = if (replaces_id != null && replaces_device != null) {
                 db.insert("Kryss",
                         "device" to device,
                         "type" to type,
@@ -94,6 +95,7 @@ data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, v
                         "kamerer" to kamerer
                 )
             }
+            return Kryss(id, device, type, count, time, kamerer, replaces_id, replaces_device)
         }
     }
 }
@@ -103,7 +105,6 @@ class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boo
     val kryss = Array(KryssType.types.size(), { i -> 0 })
     public fun update(db: SQLiteDatabase) {
         val weight = weight
-        updated = System.currentTimeMillis()
         if(weight != null) {
             db.update("Kamerer",
                     "name" to name,
@@ -160,21 +161,34 @@ public class MainActivity : Activity(), AnkoLogger {
                 .beginTransaction()
                 .replace(android.R.id.content, KamererListFragment())
                 .commit()
-
-        startServer()
     }
 
     data class IdAndDevice(val id:Long, val device:String)
 
-    var kryssCache:List<Kryss> = ArrayList<Kryss>()
+    var kryssCache:ArrayList<Kryss> = ArrayList<Kryss>()
 
     private fun loadKryss() {
         database.use {
             info("Loading kryss")
             val time = System.currentTimeMillis()
             val rows = select("Kryss k", *Kryss.selectList).parseList(Kryss.parser)
-            val replacedKryss = kryssCache.filter({r -> r.replaces_id != null && r.replaces_device != null}).map { r -> IdAndDevice(r.replaces_id as Long, r.replaces_device as String) }.toHashSet()
-            kryssCache = rows.filter({r -> !replacedKryss.contains(IdAndDevice(r.id as Long, r.device))})
+            val replacedRows = HashMap<IdAndDevice, Kryss>()
+            for(row in rows) {
+                if(row.replaces_id != null && row.replaces_device != null) {
+                    val replaces = IdAndDevice(row.replaces_id, row.replaces_device)
+                    if(replacedRows.containsKey(replaces)) {
+                        // Pick one device to win
+                        if(row.device > replacedRows[replaces].device) {
+                            replacedRows[replaces] = row
+                        }
+                    } else {
+                        replacedRows[replaces] = row
+                    }
+                }
+            }
+
+            // Skip replacing rows that were not picked, then filter replaced rows.
+            kryssCache = (rows.filter { r -> r.replaces_id == null} + replacedRows.values()).filter { r -> !replacedRows.containsKey(IdAndDevice(r.id as Long, r.device))}.toArrayList()
             info("Time to load kryss: ${System.currentTimeMillis() - time}")
         }
         calculateKryss()
@@ -196,9 +210,9 @@ public class MainActivity : Activity(), AnkoLogger {
                 kamerer.kryss[kryss.type] += kryss.count
                 val weight = kamerer.weight
                 if(weight != null) {
-                    kamerer.alcohol = (kamerer.alcohol ?: 0.0)
-                        + Math.min(1.0, (time - kryss.time) / (30 * 60 * 1000.0)) * 10.0 * Math.max(0.0,
-                            0.806 * kryssType.alcohol * 25.0 * 0.1 * 1.2 * kryss.count
+                    kamerer.alcohol = (kamerer.alcohol ?: 0.0) +
+                            /*Math.min(1.0, (time - kryss.time) / (30 * 60 * 1000.0)) */
+                            10.0 * Math.max(0.0, 0.806 * kryssType.alcohol * 25.0 * 0.1 * 1.2 * kryss.count
                                     / ((if (kamerer.male) 0.58 else 0.49) * weight)
                                     - (if (kamerer.male) 0.015 else 0.017) * (time - kryss.time) / 3600000)
                 }
@@ -220,6 +234,15 @@ public class MainActivity : Activity(), AnkoLogger {
 
     override fun onDestroy() {
         super<Activity>.onDestroy()
+    }
+
+    override fun onStart() {
+        super<Activity>.onStart()
+        startServer()
+    }
+
+    override fun onStop() {
+        super<Activity>.onStop()
         serverTask?.cancel(true)
     }
 
@@ -236,59 +259,79 @@ public class MainActivity : Activity(), AnkoLogger {
         updater?.cancel(true)
     }
 
+    val syncing = Semaphore(1, true)
+
     fun syncKryss(outputStream:OutputStream, inputStream:InputStream) {
-        database.use {
-            val myLatestKryss =
-                    select("Kryss", "device", "ifnull(max(real_id)", "max(_id))")
-                    .groupBy("device")
-                    .parseList(rowParser({device:String, id:Long -> DeviceLatestKryss(device, id)}))
+        syncing.acquire()
+        try {
+            database.use {
+                val myLatestKryss =
+                        select("Kryss", "device", "max(ifnull(real_id, _id))")
+                                .groupBy("device")
+                                .parseList(rowParser({ device: String, id: Long -> DeviceLatestKryss(device, id) }))
 
-            val mapper = jacksonObjectMapper()
-            mapper.configure(JsonGenerator.Feature.AUTO_CLOSE_TARGET, false)
-            mapper.configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, false)
+                val mapper = jacksonObjectMapper()
+                mapper.configure(JsonGenerator.Feature.AUTO_CLOSE_TARGET, false)
+                mapper.configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, false)
 
-            info("Sending ${myLatestKryss}")
-            mapper.writeValue(outputStream, myLatestKryss)
-            outputStream.flush()
-
-            val jsonParser = mapper.getFactory().createParser(inputStream)
-            val theirLatestKryss = jsonParser.readValueAs<List<DeviceLatestKryss>>(object: TypeReference<List<DeviceLatestKryss>>(){})
-            info("Received ${theirLatestKryss}")
-
-            val kryssPairs = myLatestKryss.map { my -> KryssPair(my,theirLatestKryss.firstOrNull({their -> their.device == my.device}) ) }
-
-            val newerKryss = kryssPairs.filter { p -> p.their == null || p.my.latestKryss > p.their.latestKryss }.map { p -> DeviceLatestKryss(p.my.device, p.their?.latestKryss ?: 0) }
-
-            val kryssToSend = newerKryss.flatMap { newer ->
-                select(Kryss.table, *Kryss.selectList)
-                        .where("device = {device} and ifnull(real_id, _id) > {latestKryss}",
-                                "device" to newer.device,
-                                "latestKryss" to newer.latestKryss)
-                        .parseList(Kryss.parser)
-            }
-
-            info("Sending ${kryssToSend.size()} kryss")
-            mapper.writeValue(outputStream, kryssToSend)
-
-            info("Sending ${kamererer.size()} kamererer")
-            mapper.writeValue(outputStream, kamererer.values())
-
-            val theirKryss = jsonParser.readValueAs<List<Kryss>>(object: TypeReference<List<Kryss>>(){})
-            info("Received ${theirKryss.size()} kryss")
-            for(kryss in theirKryss) {
-                kryss.insert(this)
-            }
-
-            val theirKamererer = jsonParser.readValueAs<List<Kamerer>>(object: TypeReference<List<Kamerer>>(){})
-            info("Received ${theirKamererer.size()} kamererer")
-            for(kamerer in theirKamererer) {
-                if(kamerer.updated > kamererer[kamerer.id].updated) {
-                    kamererer[kamerer.id].weight = kamerer.weight
-                    kamererer[kamerer.id].update(this)
+                val protocol = "groggomat 2"
+                mapper.writeValue(outputStream, protocol)
+                outputStream.flush()
+                val theirProtocol = mapper.readValue<String>(inputStream)
+                if (protocol != theirProtocol) {
+                    throw Exception("Unknown protocol: $theirProtocol")
                 }
-            }
 
-            info("Sync complete")
+                info("Sending ${myLatestKryss}")
+                mapper.writeValue(outputStream, myLatestKryss)
+                outputStream.flush()
+
+                val jsonParser = mapper.getFactory().createParser(inputStream)
+                val theirLatestKryss = jsonParser.readValueAs<List<DeviceLatestKryss>>(object : TypeReference<List<DeviceLatestKryss>>() {})
+                info("Received ${theirLatestKryss}")
+
+                val kryssPairs = myLatestKryss.map { my -> KryssPair(my, theirLatestKryss.firstOrNull({ their -> their.device == my.device })) }
+
+                val newerKryss = kryssPairs.filter { p -> p.their == null || p.my.latestKryss > p.their.latestKryss }.map { p -> DeviceLatestKryss(p.my.device, p.their?.latestKryss ?: 0) }
+
+                val kryssToSend = newerKryss.flatMap { newer ->
+                    select(Kryss.table, *Kryss.selectList)
+                            .where("device = {device} and ifnull(real_id, _id) > {latestKryss}",
+                                    "device" to newer.device,
+                                    "latestKryss" to newer.latestKryss)
+                            .parseList(Kryss.parser)
+                }
+
+                info("Sending ${kryssToSend.size()} kryss")
+                mapper.writeValue(outputStream, kryssToSend)
+                outputStream.flush()
+
+                val theirKryss = jsonParser.readValueAs<List<Kryss>>(object : TypeReference<List<Kryss>>() {})
+                info("Received ${theirKryss.size()} kryss")
+
+                info("Sending ${kamererer.size()} kamererer")
+                mapper.writeValue(outputStream, kamererer.values())
+                outputStream.flush()
+
+                val theirKamererer = jsonParser.readValueAs<List<Kamerer>>(object : TypeReference<List<Kamerer>>() {})
+                info("Received ${theirKamererer.size()} kamererer")
+
+                info("Storing updates")
+
+                for (kryss in theirKryss) {
+                    kryss.insert(this)
+                }
+                for (kamerer in theirKamererer) {
+                    if (kamerer.updated > kamererer[kamerer.id].updated) {
+                        kamererer[kamerer.id].weight = kamerer.weight
+                        kamererer[kamerer.id].update(this)
+                    }
+                }
+
+                info("Sync complete")
+            }
+        } finally {
+            syncing.release()
         }
     }
 
@@ -308,6 +351,7 @@ public class MainActivity : Activity(), AnkoLogger {
                         }
                         uiThread {
                             toast("Sync done as server")
+                            loadKamererer()
                             updateKryssLists(true)
                         }
                     } catch(e: Exception) {
@@ -330,12 +374,13 @@ public class MainActivity : Activity(), AnkoLogger {
                 Socket().use { socket ->
                     socket.bind(null)
                     socket.connect(InetSocketAddress(host, PORT), 500)
-                    socket.setSoTimeout(1000)
+                    socket.setSoTimeout(10000)
                     info("Connected to server")
                     syncKryss(socket.getOutputStream(), socket.getInputStream())
                 }
                 uiThread {
                     toast("Sync done as client")
+                    loadKamererer()
                     updateKryssLists(true)
                 }
             } catch(e:Exception) {
@@ -471,8 +516,9 @@ public class MainActivity : Activity(), AnkoLogger {
             calculateKryss()
 
         val fragment = getFragmentManager().findFragmentById(android.R.id.content)
+        info("updateKryssLists: $reload, $fragment")
         if(fragment is KamererListFragment) {
-            (fragment.getListAdapter() as ArrayAdapter<*>).notifyDataSetChanged()
+            fragment.updateData()
         } else if(fragment is KamererFragment) {
             fragment.updateData()
         }
@@ -495,16 +541,17 @@ public class MainActivity : Activity(), AnkoLogger {
 
     private var wifiP2pInfo: WifiP2pInfo? = null
     fun connected(info: WifiP2pInfo) {
-        this.wifiP2pInfo = info
-        updateMenu()
         if(info.groupFormed){
             toast("Connected")
-        } else {
+            if(!info.isGroupOwner) {
+                if(syncing.availablePermits() > 0)
+                    startClient(info.groupOwnerAddress.getHostAddress())
+            }
+        } else if(wifiP2pInfo?.groupFormed == true) {
             toast("Disconnected")
         }
-        if(info.groupFormed && !info.isGroupOwner) {
-            startClient(info.groupOwnerAddress.getHostAddress())
-        }
+        this.wifiP2pInfo = info
+        updateMenu()
     }
 
     fun updateMenu() {
