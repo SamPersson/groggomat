@@ -31,7 +31,7 @@ public class KamererListFragment : ListFragment() {
             ft.addToBackStack(null);
 
             // Create and show the dialog.
-            val newFragment = KamererFragment().withArguments("kamerer" to position);
+            val newFragment = KamererFragment().withArguments("kamerer" to id);
             getFragmentManager().beginTransaction().replace(android.R.id.content, newFragment).addToBackStack(null).commit()
             true
         }
@@ -40,7 +40,9 @@ public class KamererListFragment : ListFragment() {
     override fun onAttach(activity: Activity?) {
         super.onAttach(activity)
 
-        setListAdapter(object: ArrayAdapter<Kamerer>(activity, -1, Kamerer.kamerers){
+        val kamerererByName = (activity as MainActivity).kamererer.values().sortBy({k -> k.name})
+
+        setListAdapter(object: ArrayAdapter<Kamerer>(activity, -1, kamerererByName){
             public inline fun <T: Any> view(inlineOptions(InlineOption.ONLY_LOCAL_RETURN) f: UiHelper.() -> T): T {
                 var view: T? = null
                 getContext().UI { view = f() }
@@ -48,7 +50,7 @@ public class KamererListFragment : ListFragment() {
             }
 
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View? {
-                val kamerer = Kamerer.kamerers[position];
+                val kamerer = kamerererByName[position];
 
                 val view = view {
                    linearLayout {
@@ -62,11 +64,13 @@ public class KamererListFragment : ListFragment() {
                             gravity= Gravity.CENTER_VERTICAL
                         }
 
-                       textView {
-                           text = java.lang.String.format("%.2f", kamerer.alcohol)
-                           textSize = 16f
-                           padding = dip(10)
-                       }.layoutParams(width = wrapContent, height = matchParent)
+                       if(kamerer.alcohol != null) {
+                           textView {
+                               text = java.lang.String.format("%.2f", kamerer.alcohol)
+                               textSize = 16f
+                               padding = dip(10)
+                           }.layoutParams(width = wrapContent, height = matchParent)
+                       }
 
                         for(i in kamerer.kryss.indices) {
                             textView {
@@ -81,6 +85,14 @@ public class KamererListFragment : ListFragment() {
                 }
 
                 return view
+            }
+
+            override fun getItemId(position: Int): Long {
+                return kamerererByName[position].id
+            }
+
+            override fun hasStableIds(): Boolean {
+                return true
             }
 
             override fun isEnabled(position: Int): Boolean {
@@ -98,7 +110,7 @@ public class KamererListFragment : ListFragment() {
         ft.addToBackStack(null);
 
         // Create and show the dialog.
-        val newFragment = KryssDialogFragment().withArguments("kamerer" to position);
+        val newFragment = KryssDialogFragment().withArguments("kamerer" to id);
         newFragment.show(ft, "dialog");
     }
 }

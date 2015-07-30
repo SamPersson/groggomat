@@ -92,15 +92,17 @@
     <orderEntry type="jdk" jdkName="Android API 22 Platform" jdkType="Android SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" exported="" name="jackson-core-2.5.3" level="project" />
-    <orderEntry type="library" exported="" name="jackson-module-kotlin-2.5.3.1" level="project" />
-    <orderEntry type="library" exported="" name="jackson-annotations-2.5.0" level="project" />
+    <orderEntry type="library" exported="" name="jxl-2.6.12" level="project" />
     <orderEntry type="library" exported="" name="support-v4-22.2.1" level="project" />
     <orderEntry type="library" exported="" name="kotlin-android-sdk-annotations-0.12.1218" level="project" />
-    <orderEntry type="library" exported="" name="kotlin-runtime-0.12.1218" level="project" />
     <orderEntry type="library" exported="" name="support-annotations-22.2.1" level="project" />
-    <orderEntry type="library" exported="" name="anko-0.6.2-15s" level="project" />
     <orderEntry type="library" exported="" name="jackson-databind-2.5.3" level="project" />
     <orderEntry type="library" exported="" name="kotlin-stdlib-0.12.1218" level="project" />
+    <orderEntry type="library" exported="" name="log4j-1.2.14" level="project" />
     <orderEntry type="library" exported="" name="appcompat-v7-22.2.1" level="project" />
+    <orderEntry type="library" exported="" name="jackson-module-kotlin-2.5.3.1" level="project" />
+    <orderEntry type="library" exported="" name="jackson-annotations-2.5.0" level="project" />
+    <orderEntry type="library" exported="" name="kotlin-runtime-0.12.1218" level="project" />
+    <orderEntry type="library" exported="" name="anko-0.6.2-15s" level="project" />
   </component>
 </module>
