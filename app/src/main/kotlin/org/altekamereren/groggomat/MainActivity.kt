@@ -490,6 +490,13 @@ public class MainActivity : Activity(), AnkoLogger {
                     }
                 }
             }*/
+            return true
+        }
+
+        if(id == R.id.action_stats) {
+            val newFragment = StatsFragment();
+            getFragmentManager().beginTransaction().replace(android.R.id.content, newFragment).addToBackStack(null).commit()
+            return true
         }
 
         return super<Activity>.onOptionsItemSelected(item)

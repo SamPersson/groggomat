@@ -23,14 +23,6 @@ public class KamererListFragment : ListFragment() {
         super.onActivityCreated(savedInstanceState)
 
         getListView().setOnItemLongClickListener { adapterView, view, position, id ->
-            val ft = getFragmentManager().beginTransaction();
-            val prev = getFragmentManager().findFragmentByTag("kamerer");
-            if (prev != null) {
-                ft.remove(prev);
-            }
-            ft.addToBackStack(null);
-
-            // Create and show the dialog.
             val newFragment = KamererFragment().withArguments("kamerer" to id);
             getFragmentManager().beginTransaction().replace(android.R.id.content, newFragment).addToBackStack(null).commit()
             true

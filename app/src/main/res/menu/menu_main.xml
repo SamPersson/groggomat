@@ -7,4 +7,6 @@
         android:orderInCategory="101" app:showAsAction="never" android:visible="false"/>
     <item android:id="@+id/action_export" android:title="Exportera"
         android:orderInCategory="102" app:showAsAction="never"/>
+    <item android:id="@+id/action_stats" android:title="Stats"
+        android:orderInCategory="103" app:showAsAction="never"/>
 </menu>
