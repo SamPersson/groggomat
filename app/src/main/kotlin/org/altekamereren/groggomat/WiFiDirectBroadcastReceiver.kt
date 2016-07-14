@@ -12,7 +12,7 @@ import org.jetbrains.anko.toast
 public class WiFiDirectBroadcastReceiver(val manager : WifiP2pManager, val channel : WifiP2pManager.Channel, val activity : MainActivity) : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val action = intent.getAction();
+        val action = intent.action;
 
         if (WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION == action) {
             val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1);
@@ -23,7 +23,7 @@ public class WiFiDirectBroadcastReceiver(val manager : WifiP2pManager, val chann
             }
         } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION == action) {
             manager.requestPeers(channel, { peers ->
-                activity.peersReceived(peers.getDeviceList().toArrayList())
+                activity.peersReceived(peers.deviceList.toList())
             })
         } else if (WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION == action) {
             manager.requestConnectionInfo(channel, { info ->

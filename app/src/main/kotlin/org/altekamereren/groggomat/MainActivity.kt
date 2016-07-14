@@ -20,7 +20,6 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.*
 import android.widget.*
-import android.support.v7.appcompat
 import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.type.TypeReference
@@ -29,7 +28,7 @@ import com.fasterxml.jackson.module.kotlin.*
 import jxl.Workbook
 import jxl.WorkbookSettings
 
-import kotlinx.android.synthetic.activity_main.*
+import kotlinx.android.synthetic.main.activity_main.*
 import org.jetbrains.anko.db.*
 import java.io.*
 import java.net.InetSocketAddress
@@ -44,6 +43,8 @@ val PORT = 14156
 data class DeviceLatestKryss(val device:String, val latestKryss:Long)
 data class KryssPair(val my:DeviceLatestKryss, val their:DeviceLatestKryss?)
 data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, val time:Long, val kamerer:Long, val replaces_id:Long?, val replaces_device:String?) {
+    public var alcohol:Double = 0.0
+
     companion object {
         val table = "Kryss k"
         val selectList = arrayOf("ifnull(real_id, _id)", "device", "type", "count", "time", "kamerer", "replaces_id", "replaces_device")
@@ -101,8 +102,8 @@ data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, v
 }
 
 class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boolean, var updated: Long) {
-    var alcohol:Double? = null
-    val kryss = Array(KryssType.types.size(), { i -> 0 })
+    var alcohol:Double = 0.0
+    val kryss = Array(KryssType.types.size, { i -> 0 })
     public fun update(db: SQLiteDatabase) {
         val weight = weight
         if(weight != null) {
@@ -154,10 +155,10 @@ public class MainActivity : Activity(), AnkoLogger {
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
 
         val manager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
-        val channel = manager.initialize(this, getMainLooper(), null)
+        val channel = manager.initialize(this, mainLooper, null)
         receiver = WiFiDirectBroadcastReceiver(manager, channel, this)
 
-        getFragmentManager()
+        fragmentManager
                 .beginTransaction()
                 .replace(android.R.id.content, KamererListFragment())
                 .commit()
@@ -165,7 +166,7 @@ public class MainActivity : Activity(), AnkoLogger {
 
     data class IdAndDevice(val id:Long, val device:String)
 
-    var kryssCache:ArrayList<Kryss> = ArrayList<Kryss>()
+    var kryssCache:MutableList<Kryss> = ArrayList<Kryss>()
 
     private fun loadKryss() {
         database.use {
@@ -178,7 +179,7 @@ public class MainActivity : Activity(), AnkoLogger {
                     val replaces = IdAndDevice(row.replaces_id, row.replaces_device)
                     if(replacedRows.containsKey(replaces)) {
                         // Pick one device to win
-                        if(row.device > replacedRows[replaces].device) {
+                        if(row.device > replacedRows[replaces]!!.device) {
                             replacedRows[replaces] = row
                         }
                     } else {
@@ -188,7 +189,7 @@ public class MainActivity : Activity(), AnkoLogger {
             }
 
             // Skip replacing rows that were not picked, then filter replaced rows.
-            kryssCache = (rows.filter { r -> r.replaces_id == null} + replacedRows.values()).filter { r -> !replacedRows.containsKey(IdAndDevice(r.id as Long, r.device))}.toArrayList()
+            kryssCache = (rows.filter { r -> r.replaces_id == null} + replacedRows.values).filter { r -> !replacedRows.containsKey(IdAndDevice(r.id as Long, r.device))}.toMutableList()
             info("Time to load kryss: ${System.currentTimeMillis() - time}")
         }
         calculateKryss()
@@ -196,25 +197,33 @@ public class MainActivity : Activity(), AnkoLogger {
 
     private fun calculateKryss() {
         database.use {
-            for(kamerer in kamererer.values()) {
+            for(kamerer in kamererer.values) {
                 for(i in kamerer.kryss.indices) {
                     kamerer.kryss[i] = 0
                 }
-                kamerer.alcohol = null
+                kamerer.alcohol = 0.0
             }
+
             info("Calculating kryss")
             val time = System.currentTimeMillis()
-            for (kryss in kryssCache) {
-                val kamerer = kamererer[kryss.kamerer]
-                val kryssType = KryssType.types[kryss.type]
-                kamerer.kryss[kryss.type] += kryss.count
-                val weight = kamerer.weight
-                if(weight != null) {
-                    kamerer.alcohol = (kamerer.alcohol ?: 0.0) +
-                            /*Math.min(1.0, (time - kryss.time) / (30 * 60 * 1000.0)) */
-                            10.0 * Math.max(0.0, 0.806 * kryssType.alcohol * 25.0 * 0.1 * 1.2 * kryss.count
-                                    / ((if (kamerer.male) 0.58 else 0.49) * weight)
-                                    - (if (kamerer.male) 0.015 else 0.017) * (time - kryss.time) / 3600000)
+            for(kamererKryss in kryssCache.groupBy { it.kamerer }) {
+                val kamerer = kamererer[kamererKryss.key]!!;
+                var alcohol = 0.0
+                var lastTime = 0L
+                for(kryss in kamererKryss.value.sortedBy { it.time }) {
+                    kamerer.kryss[kryss.type] += kryss.count
+                    val weight = kamerer.weight
+                    if(weight != null) {
+                        val kryssType = KryssType.types[kryss.type]
+                        val remainingAlcohol = Math.max(0.0, alcohol - (if (kamerer.male) 0.15 else 0.17) * (kryss.time - lastTime) / 3600000)
+                        val newAlcohol = remainingAlcohol + 0.806 * kryssType.alcohol * 25.0 * 1.2 * kryss.count / ((if (kamerer.male) 0.58 else 0.49) * weight)
+                        alcohol = newAlcohol
+                        kryss.alcohol = alcohol
+                    }
+                    lastTime = kryss.time
+                }
+                if(kamerer.weight != null) {
+                    kamerer.alcohol = Math.max(0.0, alcohol - (if (kamerer.male) 0.15 else 0.17) * (time - lastTime) / 3600000)
                 }
             }
             info("Time to calc kryss: ${System.currentTimeMillis() - time}")
@@ -250,7 +259,7 @@ public class MainActivity : Activity(), AnkoLogger {
         super<Activity>.onResume()
         registerReceiver(receiver, intentFilter)
         val sch = Executors.newScheduledThreadPool(1) as ScheduledThreadPoolExecutor
-        updater = sch.scheduleAtFixedRate({ uiThread { updateKryssLists(false) }}, 60, 60, TimeUnit.SECONDS) ;
+        updater = sch.scheduleAtFixedRate({ doAsync { uiThread { updateKryssLists(false) }} }, 60, 60, TimeUnit.SECONDS) ;
     }
 
     override fun onPause() {
@@ -302,19 +311,19 @@ public class MainActivity : Activity(), AnkoLogger {
                             .parseList(Kryss.parser)
                 }
 
-                info("Sending ${kryssToSend.size()} kryss")
+                info("Sending ${kryssToSend.size} kryss")
                 mapper.writeValue(outputStream, kryssToSend)
                 outputStream.flush()
 
                 val theirKryss = jsonParser.readValueAs<List<Kryss>>(object : TypeReference<List<Kryss>>() {})
-                info("Received ${theirKryss.size()} kryss")
+                info("Received ${theirKryss.size} kryss")
 
-                info("Sending ${kamererer.size()} kamererer")
-                mapper.writeValue(outputStream, kamererer.values())
+                info("Sending ${kamererer.size} kamererer")
+                mapper.writeValue(outputStream, kamererer.values)
                 outputStream.flush()
 
                 val theirKamererer = jsonParser.readValueAs<List<Kamerer>>(object : TypeReference<List<Kamerer>>() {})
-                info("Received ${theirKamererer.size()} kamererer")
+                info("Received ${theirKamererer.size} kamererer")
 
                 info("Storing updates")
 
@@ -322,9 +331,9 @@ public class MainActivity : Activity(), AnkoLogger {
                     kryss.insert(this)
                 }
                 for (kamerer in theirKamererer) {
-                    if (kamerer.updated > kamererer[kamerer.id].updated) {
-                        kamererer[kamerer.id].weight = kamerer.weight
-                        kamererer[kamerer.id].update(this)
+                    if (kamerer.updated > kamererer[kamerer.id]!!.updated) {
+                        kamererer[kamerer.id]!!.weight = kamerer.weight
+                        kamererer[kamerer.id]!!.update(this)
                     }
                 }
 
@@ -338,16 +347,16 @@ public class MainActivity : Activity(), AnkoLogger {
     private var serverTask: Future<Unit>? = null
 
     fun startServer() {
-        serverTask = async {
+        serverTask = doAsync {
             ServerSocket(PORT).use { serverSocket ->
                 info("Server listening on port $PORT")
-                while (serverTask?.isCancelled() == false) {
+                while (serverTask?.isCancelled == false) {
                     try {
                         serverSocket.accept().use { client ->
-                            client.setSoTimeout(5*1000)
+                            client.soTimeout = 5*1000
 
                             info("Client connected, syncing")
-                            syncKryss(client.getOutputStream(), client.getInputStream())
+                            syncKryss(client.outputStream, client.inputStream)
                         }
                         uiThread {
                             toast("Sync done as server")
@@ -368,15 +377,15 @@ public class MainActivity : Activity(), AnkoLogger {
     }
 
     fun startClient(host:String) {
-        async {
+        doAsync {
             try{
                 info("Starting Client")
                 Socket().use { socket ->
                     socket.bind(null)
                     socket.connect(InetSocketAddress(host, PORT), 500)
-                    socket.setSoTimeout(10000)
+                    socket.soTimeout = 10000
                     info("Connected to server")
-                    syncKryss(socket.getOutputStream(), socket.getInputStream())
+                    syncKryss(socket.outputStream, socket.inputStream)
                 }
                 uiThread {
                     toast("Sync done as client")
@@ -397,7 +406,7 @@ public class MainActivity : Activity(), AnkoLogger {
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.menu_main, menu)
+        menuInflater.inflate(R.menu.menu_main, menu)
         this.menu = menu
         updateMenu()
         return true
@@ -407,7 +416,7 @@ public class MainActivity : Activity(), AnkoLogger {
         // Handle action bar item clicks here. The action bar will
         // automatically handle clicks on the Home/Up button, so long
         // as you specify a parent activity in AndroidManifest.xml.
-        val id = item!!.getItemId()
+        val id = item!!.itemId
 
         val wifiP2pInfo = wifiP2pInfo
         val receiver = receiver
@@ -440,37 +449,54 @@ public class MainActivity : Activity(), AnkoLogger {
         }
 
         if (id == R.id.action_sync && wifiP2pInfo != null) {
-            startClient(wifiP2pInfo.groupOwnerAddress.getHostAddress())
+            startClient(wifiP2pInfo.groupOwnerAddress.hostAddress)
             return true
         }
 
         if (id == R.id.action_export) {
             val date = SimpleDateFormat("yyyyMMdd-hhmmss").format(Date())
-            val dir = File(Environment.getExternalStorageDirectory().getAbsolutePath() + "/groggomat")
+            val dir = File(Environment.getExternalStorageDirectory().absolutePath + "/groggomat")
             dir.mkdirs()
 
             val file = File(dir, "$date.xls")
 
             val wbSettings = WorkbookSettings()
-            wbSettings.setLocale(Locale("en", "EN"))
+            wbSettings.locale = Locale("en", "EN")
             val workbook = Workbook.createWorkbook(file, wbSettings)
             val sheet = workbook.createSheet("Kryss", 0)
             val cols = arrayOf("kamerer", "time", "type", "count")
             for(i in cols.indices) {
                 sheet.addCell(jxl.write.Label(i, 0, cols[i]))
             }
-            database.use {
-                for (i in kryssCache.indices) {
-                    val kryss = kryssCache[i]
-                    sheet.addCell(jxl.write.Label(0, i+1, kamererer[kryss.kamerer].name))
-                    sheet.addCell(jxl.write.DateTime(1, i+1, Date(kryss.time)))
-                    sheet.addCell(jxl.write.Label(2, i+1, KryssType.types[kryss.type].name))
-                    sheet.addCell(jxl.write.Number(3, i+1, kryss.count.toDouble()))
+            for (i in kryssCache.indices) {
+                val kryss = kryssCache[i]
+                sheet.addCell(jxl.write.Label(0, i+1, kamererer[kryss.kamerer]!!.name))
+                sheet.addCell(jxl.write.DateTime(1, i+1, Date(kryss.time)))
+                sheet.addCell(jxl.write.Label(2, i+1, KryssType.types[kryss.type].name))
+                sheet.addCell(jxl.write.Number(3, i+1, kryss.count.toDouble()))
+            }
+
+            val sheetKamerer = workbook.createSheet("Kamererer", 1)
+            val colsKamerer = arrayOf("kamerer", "sex", "weight")
+            for(i in colsKamerer.indices) {
+                sheetKamerer.addCell(jxl.write.Label(i, 0, colsKamerer[i]))
+            }
+
+            var row = 0
+            for(kamerer in kamererer.values.sortedBy({it.name})) {
+                row++
+                sheetKamerer.addCell(jxl.write.Label(0, row, kamerer.name))
+                sheetKamerer.addCell(jxl.write.Label(1, row, if(kamerer.male) "man" else "woman"))
+                val w = kamerer.weight
+                if(w != null) {
+                    sheetKamerer.addCell(jxl.write.Number(2, row, w))
                 }
             }
+
             workbook.write()
             workbook.close()
-            toast("Wrote data to ${file.getAbsolutePath()}")
+
+            toast("Wrote data to ${file.absolutePath}")
 
             OutputStreamWriter(FileOutputStream(File(dir, "$date-raw.csv"))).use { writer ->
                 writer.write("id, device, type, count, time, kamerer, replaces_id, replaces_device\n")
@@ -495,7 +521,7 @@ public class MainActivity : Activity(), AnkoLogger {
 
         if(id == R.id.action_stats) {
             val newFragment = StatsFragment();
-            getFragmentManager().beginTransaction().replace(android.R.id.content, newFragment).addToBackStack(null).commit()
+            fragmentManager.beginTransaction().replace(android.R.id.content, newFragment).addToBackStack(null).commit()
             return true
         }
 
@@ -522,7 +548,7 @@ public class MainActivity : Activity(), AnkoLogger {
         else
             calculateKryss()
 
-        val fragment = getFragmentManager().findFragmentById(android.R.id.content)
+        val fragment = fragmentManager.findFragmentById(android.R.id.content)
         info("updateKryssLists: $reload, $fragment")
         if(fragment is KamererListFragment) {
             fragment.updateData()
@@ -536,8 +562,8 @@ public class MainActivity : Activity(), AnkoLogger {
     fun peersReceived(peers: List<WifiP2pDevice>) {
         if(searchingForPeers) {
             searchingForPeers = false
-            if (peers.size() >= 0) {
-                selector("Which peer?", peers.map { d -> d.deviceName }.toArrayList(), { i ->
+            if (peers.size >= 0) {
+                selector("Which peer?", peers.map { d -> d.deviceName }.toList(), { i ->
                     connectToDevice(peers[i])
                 })
             } else {
@@ -552,7 +578,7 @@ public class MainActivity : Activity(), AnkoLogger {
             toast("Connected")
             if(!info.isGroupOwner) {
                 if(syncing.availablePermits() > 0)
-                    startClient(info.groupOwnerAddress.getHostAddress())
+                    startClient(info.groupOwnerAddress.hostAddress)
             }
         } else if(wifiP2pInfo?.groupFormed == true) {
             toast("Disconnected")
@@ -564,10 +590,10 @@ public class MainActivity : Activity(), AnkoLogger {
     fun updateMenu() {
         val wifiP2pInfo = wifiP2pInfo
         if(wifiP2pInfo != null) {
-            menu?.findItem(R.id.action_connect)?.setTitle(if (wifiP2pInfo.groupFormed) "Koppla från" else "Anslut")
-            menu?.findItem(R.id.action_sync)?.setVisible(wifiP2pInfo.groupFormed && !wifiP2pInfo.isGroupOwner)
+            menu?.findItem(R.id.action_connect)?.title = if (wifiP2pInfo.groupFormed) "Koppla från" else "Anslut"
+            menu?.findItem(R.id.action_sync)?.isVisible = wifiP2pInfo.groupFormed && !wifiP2pInfo.isGroupOwner
             if (wifiP2pInfo.groupFormed && !wifiP2pInfo.isGroupOwner) {
-                menu?.findItem(R.id.action_sync)?.setTitle("Synka ${wifiP2pInfo.groupOwnerAddress.getHostAddress()}")
+                menu?.findItem(R.id.action_sync)?.title = "Synka ${wifiP2pInfo.groupOwnerAddress.hostAddress}"
             }
         }
     }

@@ -14,18 +14,15 @@ import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.ListView
 import org.jetbrains.anko.*
-import org.jetbrains.anko.custom.customView
-import org.jetbrains.anko.db.SqlOrderDirection
-import org.jetbrains.anko.db.select
 import java.text.SimpleDateFormat
 import java.util.*
 
 public class KamererFragment : Fragment()
 {
     public class ListAdapter(context: Context, val kryss:MutableList<Kryss>) : ArrayAdapter<Kryss>(context, -1, kryss) {
-        public inline fun <T: Any> view(inlineOptions(InlineOption.ONLY_LOCAL_RETURN) f: UiHelper.() -> T): T {
+        public inline fun <T: Any> view(crossinline f: AnkoContext<*>.() -> T): T {
             var view: T? = null
-            getContext().UI { view = f() }
+            context.UI { view = f() }
             return view!!
         }
 
@@ -34,7 +31,7 @@ public class KamererFragment : Fragment()
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View? {
             val k = kryss[position];
 
-            var view = view {
+            val view = view {
                 verticalLayout {
                     textView {
                         text = "${dateFormat.format(Date(k.time))} ${k.device} ${k.id} ${KryssType.types[k.type].name} ${k.count}"
@@ -57,13 +54,14 @@ public class KamererFragment : Fragment()
 
     public fun updateData() {
         listAdapter?.kryss?.clear()
-        listAdapter?.kryss?.addAll(fetchKryss(getArguments().getLong("kamerer")))
+        listAdapter?.kryss?.addAll(fetchKryss(arguments.getLong("kamerer")))
         listAdapter?.notifyDataSetChanged()
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        val kamererId = getArguments().getLong("kamerer")
+        val kamererId = arguments.getLong("kamerer")
         val kamerer = (ctx as MainActivity).kamererer[kamererId]
+        if(kamerer == null) throw Exception()
 
         val kryss = ArrayList(fetchKryss(kamererId))
 
@@ -78,7 +76,7 @@ public class KamererFragment : Fragment()
             }
         }
 
-        val view = verticalLayout {
+        val view = ctx.verticalLayout {
             linearLayout {
                 textView {
                     textSize = 24f
@@ -89,24 +87,23 @@ public class KamererFragment : Fragment()
                     hint = "Vikt i kilo"
                     padding = dip(5)
                     onClick {
-                        var weightAlert:AlertDialogBuilder
-                        var dialog: AlertDialog
+                        val weightAlert:AlertDialogBuilder
                         weightAlert = alert {
                             title("Skriv in din vikt")
                             customView {
-                                var weightInput:EditText
+                                var weightInput:EditText? = null
                                 weightInput = editText {
                                     inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
                                     onEditorAction { textView, actionId, keyEvent ->
                                         if(actionId and EditorInfo.IME_MASK_ACTION == EditorInfo.IME_ACTION_DONE) {
-                                            val d = parseDouble(weightInput.text.toString())
+                                            val d = parseDouble(weightInput!!.text.toString())
                                             if(d != null) {
                                                 kamerer.weight = d
                                                 kamerer.updated = System.currentTimeMillis()
                                                 database.use {
                                                     kamerer.update(this)
                                                 }
-                                                dialog.dismiss()
+                                                dialog!!.dismiss()
                                                 (ctx as MainActivity).updateKryssLists(false)
                                             }
                                             else {
@@ -121,17 +118,16 @@ public class KamererFragment : Fragment()
                                 weightInput.requestFocus()
                             }
                         }
-                        dialog = weightAlert.getBuilder().create()
-                        dialog.show()
-                        dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+                        weightAlert.show()
+                        weightAlert.dialog!!.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
                     }
                 }
             }
             listView {
                 adapter = listAdapter
                 setOnItemClickListener { adapterView, view, position, id ->
-                    val ft = getFragmentManager().beginTransaction();
-                    val prev = getFragmentManager().findFragmentByTag("dialog");
+                    val ft = fragmentManager.beginTransaction();
+                    val prev = fragmentManager.findFragmentByTag("dialog");
                     if (prev != null) {
                         ft.remove(prev);
                     }
@@ -153,7 +149,7 @@ public class KamererFragment : Fragment()
     private fun fetchKryss(kamererId: Long): List<Kryss> {
         return (ctx as MainActivity).kryssCache
                 .filter({kryss -> kryss.kamerer == kamererId})
-                .sortDescendingBy({kryss -> kryss.time})
+                .sortedByDescending ({kryss -> kryss.time})
     }
 
 }

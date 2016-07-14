@@ -14,22 +14,23 @@ import java.text.DateFormat
 import java.util.*
 
 public class StatsFragment : Fragment() {
-    data class KamererValue<T>(val kamerer:Kamerer, val value:T)
+    data class KamererValue<T>(val kamerer:Kamerer, val value:T, val description:String? = null)
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         val mainActivity = (ctx as MainActivity)
 
         val dateFormat = DateFormat.getInstance()
 
-        var statsView: TextView
-        val view = verticalLayout {
+        var statsView: TextView? = null
+        val view = ctx.verticalLayout {
+            isVerticalScrollBarEnabled = true
             val fromDate = editText {
                 inputType = InputType.TYPE_CLASS_DATETIME
-                text = dateFormat.format(Date(Date().getTime()-24*3600*1000))
+                setText(dateFormat.format(Date(Date().time -24*3600*1000)))
             }
             val toDate = editText {
                 inputType = InputType.TYPE_CLASS_DATETIME
-                text = dateFormat.format(Date())
+                setText(dateFormat.format(Date()))
             }
             linearLayout {
                 button("Kryss (alla typer)") {
@@ -37,10 +38,10 @@ public class StatsFragment : Fragment() {
                         val from = dateFormat.parse(fromDate.text.toString())
                         val to = dateFormat.parse(toDate.text.toString())
 
-                        statsView.text = mainActivity.kamererer.values()
-                                .map { k -> KamererValue(k, mainActivity.kryssCache.filter { kryss -> kryss.kamerer == k.id && kryss.time >= from.getTime() && kryss.time < to.getTime() }.sumBy { kryss -> kryss.count }) }
-                                .sortDescendingBy { kv -> kv.value }
-                                .map { kv -> "${kv.value}\t${kv.kamerer.name}" }.join("\n")
+                        statsView!!.text = mainActivity.kamererer.values
+                                .map { k -> KamererValue(k, mainActivity.kryssCache.filter { kryss -> kryss.kamerer == k.id && kryss.time >= from.time && kryss.time < to.time }.sumBy { kryss -> kryss.count }) }
+                                .sortedByDescending { kv -> kv.value }
+                                .map { kv -> "${kv.value}\t${kv.kamerer.name}" }.joinToString("\n")
                     }
                 }
                 button("Alkohol (cl %40 sprit)") {
@@ -48,16 +49,31 @@ public class StatsFragment : Fragment() {
                         val from = dateFormat.parse(fromDate.text.toString())
                         val to = dateFormat.parse(toDate.text.toString())
 
-                        statsView.text = mainActivity.kamererer.values()
-                                .map { k -> KamererValue(k, mainActivity.kryssCache.filter { kryss -> kryss.kamerer == k.id && kryss.time >= from.getTime() && kryss.time < to.getTime() }.sumByDouble { kryss -> kryss.count*KryssType.types[kryss.type].alcohol*10 }.toInt()) }
-                                .sortDescendingBy { kv -> kv.value }
-                                .map { kv -> "${kv.value}\t${kv.kamerer.name}" }.join("\n")
+                        statsView!!.text = mainActivity.kamererer.values
+                                .map { k -> KamererValue(k, mainActivity.kryssCache.filter { kryss -> kryss.kamerer == k.id && kryss.time >= from.time && kryss.time < to.time }.sumByDouble { kryss -> kryss.count*KryssType.types[kryss.type].alcohol*10 }.toInt()) }
+                                .sortedByDescending { kv -> kv.value }
+                                .map { kv -> "${kv.value}\t${kv.kamerer.name}" }.joinToString("\n")
+                    }
+                }
+                button("Max alcohol") {
+                    onClick {
+                        val from = dateFormat.parse(fromDate.text.toString())
+                        val to = dateFormat.parse(toDate.text.toString())
+
+                        statsView!!.text = mainActivity.kamererer.values
+                                .filter { it.weight != null }
+                                .map { k ->
+                                    val maxAlcoholKryss = mainActivity.kryssCache.filter { kryss -> kryss.kamerer == k.id && kryss.time >= from.time && kryss.time < to.time }.maxBy { kryss -> kryss.alcohol };
+                                    KamererValue (k, maxAlcoholKryss?.alcohol, dateFormat.format(Date(maxAlcoholKryss?.time ?: 0)))
+                                }
+                                .sortedByDescending { kv -> kv.value }
+                                .map { kv -> "${kv.value}\t${kv.description}\t${kv.kamerer.name}" }
+                                .joinToString("\n")
                     }
                 }
             }
             statsView = textView {
-
-            }.layoutParams(width=matchParent, height=wrapContent)
+            }.lparams(width=matchParent, height=wrapContent)
         }
 
         return view

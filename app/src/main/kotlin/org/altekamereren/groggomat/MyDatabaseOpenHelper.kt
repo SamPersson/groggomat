@@ -12,7 +12,8 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
     companion object {
         private var instance: MyDatabaseOpenHelper? = null
 
-        synchronized fun getInstance(ctx: Context): MyDatabaseOpenHelper {
+        @Synchronized
+        fun getInstance(ctx: Context): MyDatabaseOpenHelper {
             if (instance == null) {
                 instance = MyDatabaseOpenHelper(ctx.getApplicationContext())
             }
@@ -53,7 +54,7 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
             db.insert("Kamerer", "_id" to i, "name" to men[i], "male" to 1, "updated" to 1/*, "weight" to r.nextDouble()*60 + 50*/)
         }
         for(i in women.indices) {
-            db.insert("Kamerer", "_id" to i+men.size(), "name" to women[i], "male" to 0, "updated" to 1/*, "weight" to r.nextDouble()*40 + 40*/)
+            db.insert("Kamerer", "_id" to i+men.size, "name" to women[i], "male" to 0, "updated" to 1/*, "weight" to r.nextDouble()*40 + 40*/)
         }
 
         /*db.execSQL("create index kryss_replaces on Kryss(replaces_id, replaces_device) where replaces_id is not null or replaces_device is not null")
@@ -73,8 +74,8 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
 
 // Access properties for Context (you could use it in Activity, Service etc.)
 val Context.database: MyDatabaseOpenHelper
-    get() = MyDatabaseOpenHelper.getInstance(getApplicationContext())
+    get() = MyDatabaseOpenHelper.getInstance(applicationContext)
 // Access property for Fragment
 val Fragment.database: MyDatabaseOpenHelper
-    get() = MyDatabaseOpenHelper.getInstance(getActivity().getApplicationContext())
+    get() = MyDatabaseOpenHelper.getInstance(activity.applicationContext)
 

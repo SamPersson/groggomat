@@ -10,24 +10,21 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.support.v7.appcompat
+import android.support.v7.appcompat.R as AR
 
-import kotlinx.android.synthetic.kryss_dialog.view.*
-import org.jetbrains.anko.background
-import org.jetbrains.anko.ctx
-import org.jetbrains.anko.db.ManagedSQLiteOpenHelper
-import org.jetbrains.anko.db.select
-import org.jetbrains.anko.enabled
+import kotlinx.android.synthetic.main.kryss_dialog.view.*
+import org.jetbrains.anko.*
+import org.jetbrains.anko.db.*
 
 public class KryssDialogFragment() : DialogFragment() {
-    val kryss = Array(KryssType.types.size(), {i->0})
+    val kryss = Array(KryssType.types.size, {i->0})
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         val v = inflater.inflate(R.layout.kryss_dialog, container, false)
-        val kamererId = getArguments().getLong("kamerer")
-        val kamerer = (ctx as MainActivity).kamererer[kamererId]
-        val replaces_id:Long? = if(getArguments().getLong("replaces_id", -1L) == -1L) null else getArguments().getLong("replaces_id")
-        val replaces_device:String? = getArguments().getString("replaces_device")
+        val kamererId = arguments.getLong("kamerer")
+        val kamerer = (ctx as MainActivity).kamererer[kamererId]!!
+        val replaces_id:Long? = if(arguments.getLong("replaces_id", -1L) == -1L) null else arguments.getLong("replaces_id")
+        val replaces_device:String? = arguments.getString("replaces_device")
         var replaceKryss: Kryss? = null
 
         val buttons = arrayOf(v.weak, v.strong, v.delux, v.food)
@@ -47,12 +44,12 @@ public class KryssDialogFragment() : DialogFragment() {
             }
         }
 
-        v.title.setText("Kryssa för ${kamerer.name}")
+        v.title.text = "Kryssa för ${kamerer.name}"
         v.kryssa.setOnClickListener {
             /*for(i in kryss.indices){
                 kamerer.kryss[i] += kryss[i]
             }*/
-            getDialog().dismiss();
+            dialog.dismiss();
             val storeKryss = kryss.indices.filter { i -> kryss[i] > 0 || i == replaceKryss?.type }
                     .map { i -> Kryss(null, (ctx as MainActivity).deviceId, i, kryss[i], replaceKryss?.time ?: System.currentTimeMillis(), kamererId, replaceKryss?.id, replaceKryss?.device) }.toTypedArray()
 
@@ -74,22 +71,22 @@ public class KryssDialogFragment() : DialogFragment() {
             else {
                 buttons[i].setBackgroundColor(KryssType.types[i].color)
             }
-            buttons[i].setText("${KryssType.types[i].name}: ${kryss[i]}")
+            buttons[i].text = "${KryssType.types[i].name}: ${kryss[i]}"
 
             buttons[i].setOnClickListener {
                 kryss[i]++;
-                buttons[i].setText("${KryssType.types[i].name}: ${kryss[i]}")
+                buttons[i].text = "${KryssType.types[i].name}: ${kryss[i]}"
                 v.kryssa.enabled = true
             }
 
             buttons[i].setOnLongClickListener {
                 kryss[i] = 0;
-                buttons[i].setText("${KryssType.types[i].name}: ${kryss[i]}");
+                buttons[i].text = "${KryssType.types[i].name}: ${kryss[i]}";
                 v.kryssa.enabled = replaceKryss != null || kryss.any { n -> n > 0 }
                 true
             }
 
-            descriptions[i].setText(KryssType.types[i].description)
+            descriptions[i].text = KryssType.types[i].description
         }
 
         return v
@@ -98,7 +95,7 @@ public class KryssDialogFragment() : DialogFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setStyle(DialogFragment.STYLE_NORMAL, appcompat.R.style.Theme_AppCompat_Dialog)
+        setStyle(DialogFragment.STYLE_NORMAL, AR.style.Theme_AppCompat_Dialog)
     }
 }
 
