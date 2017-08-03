@@ -68,9 +68,8 @@ public class KryssDialogFragment() : DialogFragment() {
             }
 
             a.setAnimationListener(object : Animation.AnimationListener {
-
                 override fun onAnimationRepeat(animation: Animation?) {}
-
+                override fun onAnimationEnd(animation: Animation?) {dialog.dismiss();}
                 override fun onAnimationStart(animation: Animation?) {}
             })
             a.duration = 500;
@@ -125,3 +124,5 @@ public class KryssDialogFragment() : DialogFragment() {
         //setStyle(DialogFragment.STYLE_NORMAL, AR.style.Theme_AppCompat_Dialog)
     }
 }
+
+
