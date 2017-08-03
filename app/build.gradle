@@ -2,13 +2,13 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 android {
-    compileSdkVersion 23
-    buildToolsVersion "24"
+    compileSdkVersion 25
+    buildToolsVersion "26.0.1"
 
     defaultConfig {
         applicationId "org.altekamereren.groggomat"
-        minSdkVersion 16
-        targetSdkVersion 23
+        minSdkVersion 22
+        targetSdkVersion 25
         versionCode 1
         versionName "1.0"
     }
@@ -46,13 +46,17 @@ buildscript {
 
 dependencies {
     compile fileTree(include: ['*.jar'], dir: 'libs')
-    compile 'com.android.support:appcompat-v7:23.2.1'
+    compile 'com.android.support:appcompat-v7:25.3.1'
     compile "org.jetbrains.kotlin:kotlin-android-sdk-annotations:1.0.0"
     compile "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-    compile 'org.jetbrains.anko:anko-sdk23:0.9'
-    compile 'org.jetbrains.anko:anko-appcompat-v7:0.9'
-    compile 'org.jetbrains.anko:anko-sqlite:0.9'
+    compile "org.jetbrains.anko:anko:$anko_version"
     compile "com.fasterxml.jackson.module:jackson-module-kotlin:2.7.5"
     compile 'net.sourceforge.jexcelapi:jxl:2.6.12'
+}
+
+kotlin {
+    experimental {
+        coroutines "enable"
+    }
 }
 

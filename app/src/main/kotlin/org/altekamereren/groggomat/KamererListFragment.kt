@@ -1,19 +1,15 @@
 package org.altekamereren.groggomat
 
 import android.app.Activity
-import android.app.Fragment
 import android.app.ListFragment
-import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
-import android.util.SparseBooleanArray
-import android.view.*
-import android.widget.AbsListView
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
 import android.widget.ArrayAdapter
-import android.widget.LinearLayout
 import android.widget.ListView
 import org.jetbrains.anko.*
-import org.jetbrains.anko.db.*
 import java.util.*
 
 public class KamererListFragment : ListFragment() {
@@ -31,14 +27,14 @@ public class KamererListFragment : ListFragment() {
     private var kamerererByName: List<Kamerer> = ArrayList<Kamerer>()
 
     fun updateData() {
-        kamerererByName = (ctx as MainActivity).kamererer.values.sortedBy({it.name})
+        kamerererByName = (ctx as MainActivity).kamererer.values.toList().sortedBy({it.name})
         (listAdapter as ArrayAdapter<*>).notifyDataSetChanged()
     }
 
     override fun onAttach(activity: Activity?) {
         super.onAttach(activity)
 
-        kamerererByName = (ctx as MainActivity).kamererer.values.sortedBy({it.name})
+        kamerererByName = (ctx as MainActivity).kamererer.values.toList().sortedBy({it.name})
 
         listAdapter = object: ArrayAdapter<Kamerer>(activity, -1, kamerererByName){
             public inline fun <T: Any> view(crossinline f: AnkoContext<*>.() -> T): T {
@@ -101,16 +97,16 @@ public class KamererListFragment : ListFragment() {
     }
 
     override fun onListItemClick(l: ListView?, v: View?, position: Int, id: Long) {
-        val ft = fragmentManager.beginTransaction();
-        val prev = fragmentManager.findFragmentByTag("dialog");
+        val ft = fragmentManager.beginTransaction()
+        val prev = fragmentManager.findFragmentByTag("dialog")
         if (prev != null) {
-            ft.remove(prev);
+            ft.remove(prev)
         }
-        ft.addToBackStack(null);
+        ft.addToBackStack(null)
 
         // Create and show the dialog.
-        val newFragment = KryssDialogFragment().withArguments("kamerer" to id);
-        newFragment.show(ft, "dialog");
+        val newFragment = KryssDialogFragment().withArguments("kamerer" to id)
+        newFragment.show(ft, "dialog")
     }
 }
 

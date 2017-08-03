@@ -1,19 +1,19 @@
 package org.altekamereren.groggomat
 
-import android.app.AlertDialog
 import android.app.Fragment
 import android.content.Context
+import android.content.DialogInterface
 import android.os.Bundle
 import android.text.InputType
-import android.util.SparseBooleanArray
-import android.view.*
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
-import android.widget.AbsListView
 import android.widget.ArrayAdapter
 import android.widget.EditText
-import android.widget.ListView
 import org.jetbrains.anko.*
+import org.jetbrains.anko.sdk25.coroutines.onClick
+import org.jetbrains.anko.sdk25.coroutines.onEditorAction
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -26,7 +26,7 @@ public class KamererFragment : Fragment()
             return view!!
         }
 
-        val dateFormat = SimpleDateFormat("yyyyMMdd hh:mm:ss")
+        val dateFormat = SimpleDateFormat("yyyyMMdd hh:mm:ss", Locale.US)
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View? {
             val k = kryss[position];
@@ -87,9 +87,10 @@ public class KamererFragment : Fragment()
                     hint = "Vikt i kilo"
                     padding = dip(5)
                     onClick {
-                        val weightAlert:AlertDialogBuilder
-                        weightAlert = alert {
-                            title("Skriv in din vikt")
+                        var dialog : DialogInterface? = null;
+                        //val weightAlert:AlertDialogBuilder
+                        val weightAlert = alert {
+                            title = "Skriv in din vikt"
                             customView {
                                 var weightInput:EditText? = null
                                 weightInput = editText {
@@ -118,8 +119,8 @@ public class KamererFragment : Fragment()
                                 weightInput.requestFocus()
                             }
                         }
-                        weightAlert.show()
-                        weightAlert.dialog!!.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+                        dialog = weightAlert.show()
+                        //dialog.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
                     }
                 }
             }

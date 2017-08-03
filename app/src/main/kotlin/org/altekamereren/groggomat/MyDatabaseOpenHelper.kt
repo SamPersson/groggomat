@@ -24,7 +24,7 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
     override fun onCreate(db: SQLiteDatabase) {
         info("DB onCreate")
         db.createTable("Kryss", true,
-                "_id" to INTEGER + PRIMARY_KEY + AUTOINCREMENT,
+                "_id" to INTEGER + PRIMARY_KEY,
                 "device" to TEXT + NOT_NULL,
                 "real_id" to INTEGER ,
                 "type" to INTEGER + NOT_NULL,
@@ -47,8 +47,36 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
                 .insert(db)
         }*/
 
-        var men = arrayOf("Jesper Hasselquist", "Damir Basic Knezevic", "Douglas Clifford", "Jens Ogniewski", "Johan Levin", "Philip Jönsson", "Peder Andersson", "Peter Swartling", "Johan Ruuskanen", "Pontus Persson", "Sam Persson", "Gustaf Malmberg", "Oskar Fransén", "Philip Ljungkvist", "Tobias Petersen", "Joakim Arnsby", "Lukas Arnsby", "Olov Ferm")
-        var women = arrayOf("Felicia Ardenmark Strand", "Jules Hanley", "Annica Ericsson", "Hanna Ekström", "Viktoria Alm", "Rebecka Erntell", "Christine Persson")
+        var men = arrayOf(
+                "Andreas Hauspurg",
+                "Damir Basic Knezevic",
+                "David Wahlqvist",
+                "Douglas Clifford",
+                "Erik Löfquist",
+                "Jens Ogniewski",
+                "Jesper Hasselquist",
+                "Johan Ruuskanen",
+                "Mattias Lilja",
+                "Olof Zetterqvist",
+                "Oskar Fransén",
+                "Peder Andersson",
+                "Per Nelsson",
+                "Philip Ljungkvist",
+                "Pontus Persson",
+                "Sam Persson",
+                "Svante Rosenlind",
+                "Viktor Hjertenstein",
+                "Övrig man 1",
+                "Övrig man 2")
+
+        var women = arrayOf(
+                "Carolina Svensson",
+                "Elin Svensson",
+                "Elisabet Benson",
+                "Ingeborg Hjorth",
+                "Jules Hanley",
+                "Övrig kvinna 1",
+                "Övrig kvinna 2")
 
         for(i in men.indices) {
             db.insert("Kamerer", "_id" to i, "name" to men[i], "male" to 1, "updated" to 1/*, "weight" to r.nextDouble()*60 + 50*/)

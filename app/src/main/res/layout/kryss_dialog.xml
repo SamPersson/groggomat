@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <GridLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent" android:layout_height="match_parent"
     android:columnCount="2">
 
@@ -139,16 +140,20 @@
         android:layout_marginTop="0dp" />
 
     <Button
+        android:id="@+id/kryssa"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Kryssa"
-        android:id="@+id/kryssa"
-        android:layout_row="6"
-        android:layout_gravity="center_horizontal"
-        android:layout_columnSpan="2"
         android:layout_column="0"
-        android:backgroundTint="#b300790a"
+        android:layout_columnSpan="2"
+        android:layout_gravity="center_horizontal"
+        android:layout_margin="5dp"
         android:layout_marginTop="20dp"
-        android:layout_margin="5dp"/>
+        android:layout_row="6"
+        android:backgroundTint="#b300790a"
+        android:paddingBottom="30dp"
+        android:paddingLeft="60dp"
+        android:paddingRight="60dp"
+        android:paddingTop="30dp"
+        android:text="Kryssa" />
 
 </GridLayout>

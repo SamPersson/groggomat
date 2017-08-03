@@ -1,35 +1,30 @@
 package org.altekamereren.groggomat
 
 import android.app.Activity
-import android.app.DialogFragment
-import android.app.ListActivity
-import android.app.ListFragment
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
 import android.content.IntentFilter
-import android.database.DataSetObserver
 import android.database.sqlite.SQLiteDatabase
-import android.graphics.Color
-import android.graphics.Typeface
-import android.net.wifi.p2p.*
+import android.net.wifi.p2p.WifiP2pConfig
+import android.net.wifi.p2p.WifiP2pDevice
+import android.net.wifi.p2p.WifiP2pInfo
+import android.net.wifi.p2p.WifiP2pManager
 import android.os.Bundle
 import android.os.Environment
-import android.support.v4.app.FragmentActivity
-import android.text.Editable
-import android.text.TextWatcher
-import android.view.*
-import android.widget.*
+import android.util.LongSparseArray
+import android.view.Menu
+import android.view.MenuItem
 import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.type.TypeReference
-import org.jetbrains.anko.*
-import com.fasterxml.jackson.module.kotlin.*
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import jxl.Workbook
 import jxl.WorkbookSettings
-
-import kotlinx.android.synthetic.main.activity_main.*
-import org.jetbrains.anko.db.*
+import org.jetbrains.anko.*
+import org.jetbrains.anko.db.insert
+import org.jetbrains.anko.db.rowParser
+import org.jetbrains.anko.db.select
+import org.jetbrains.anko.db.update
 import java.io.*
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -37,6 +32,7 @@ import java.net.Socket
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.*
+import kotlin.coroutines.experimental.buildSequence
 
 val PORT = 14156
 
@@ -112,14 +108,14 @@ class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boo
                     "weight" to weight,
                     "male" to male,
                     "updated" to updated)
-                    .where("_id = {id}", "id" to id)
+                    .whereArgs("_id = {id}", "id" to id)
                     .exec()
         } else {
             db.update("Kamerer",
                     "name" to name,
                     "male" to if(male) 1 else 0,
                     "updated" to updated)
-                    .where("_id = {id}", "id" to id)
+                    .whereArgs("_id = {id}", "id" to id)
                     .exec()
         }
     }
@@ -142,7 +138,7 @@ public class MainActivity : Activity(), AnkoLogger {
             deviceId = UUID.randomUUID().toString()
             val editor = prefs.edit()
             editor.putString("deviceId", deviceId)
-            editor.commit()
+            editor.apply()
         }
 
         loadKamererer()
@@ -230,13 +226,13 @@ public class MainActivity : Activity(), AnkoLogger {
         }
     }
 
-    val kamererer = HashMap<Long, Kamerer>()
+    val kamererer = LongSparseArray<Kamerer>()
     private fun loadKamererer() {
         kamererer.clear()
         database.use {
             val kamererParser = rowParser { id: Long, name: String, weight: Any?, male: Long, updated:Long -> Kamerer(id, name, if(weight is Double) weight else null, male > 0, updated) }
             for (kamerer in select("Kamerer", "_id", "name", "weight", "male", "updated").parseList(kamererParser)) {
-                kamererer[kamerer.id] = kamerer
+                kamererer.put(kamerer.id, kamerer)
             }
         }
     }
@@ -291,13 +287,13 @@ public class MainActivity : Activity(), AnkoLogger {
                     throw Exception("Unknown protocol: $theirProtocol")
                 }
 
-                info("Sending ${myLatestKryss}")
+                info("Sending $myLatestKryss")
                 mapper.writeValue(outputStream, myLatestKryss)
                 outputStream.flush()
 
-                val jsonParser = mapper.getFactory().createParser(inputStream)
+                val jsonParser = mapper.factory.createParser(inputStream)
                 val theirLatestKryss = jsonParser.readValueAs<List<DeviceLatestKryss>>(object : TypeReference<List<DeviceLatestKryss>>() {})
-                info("Received ${theirLatestKryss}")
+                info("Received $theirLatestKryss")
 
                 val kryssPairs = myLatestKryss.map { my -> KryssPair(my, theirLatestKryss.firstOrNull({ their -> their.device == my.device })) }
 
@@ -305,7 +301,7 @@ public class MainActivity : Activity(), AnkoLogger {
 
                 val kryssToSend = newerKryss.flatMap { newer ->
                     select(Kryss.table, *Kryss.selectList)
-                            .where("device = {device} and ifnull(real_id, _id) > {latestKryss}",
+                            .whereArgs("device = {device} and ifnull(real_id, _id) > {latestKryss}",
                                     "device" to newer.device,
                                     "latestKryss" to newer.latestKryss)
                             .parseList(Kryss.parser)
@@ -318,8 +314,8 @@ public class MainActivity : Activity(), AnkoLogger {
                 val theirKryss = jsonParser.readValueAs<List<Kryss>>(object : TypeReference<List<Kryss>>() {})
                 info("Received ${theirKryss.size} kryss")
 
-                info("Sending ${kamererer.size} kamererer")
-                mapper.writeValue(outputStream, kamererer.values)
+                info("Sending ${kamererer.size()} kamererer")
+                mapper.writeValue(outputStream, kamererer.values.toList())
                 outputStream.flush()
 
                 val theirKamererer = jsonParser.readValueAs<List<Kamerer>>(object : TypeReference<List<Kamerer>>() {})
@@ -331,9 +327,11 @@ public class MainActivity : Activity(), AnkoLogger {
                     kryss.insert(this)
                 }
                 for (kamerer in theirKamererer) {
-                    if (kamerer.updated > kamererer[kamerer.id]!!.updated) {
-                        kamererer[kamerer.id]!!.weight = kamerer.weight
-                        kamererer[kamerer.id]!!.update(this)
+                    val myKamerer = kamererer[kamerer.id];
+                    if (kamerer.updated > myKamerer.updated) {
+                        myKamerer.weight = kamerer.weight
+                        myKamerer.updated = kamerer.updated
+                        myKamerer.update(this)
                     }
                 }
 
@@ -454,7 +452,7 @@ public class MainActivity : Activity(), AnkoLogger {
         }
 
         if (id == R.id.action_export) {
-            val date = SimpleDateFormat("yyyyMMdd-hhmmss").format(Date())
+            val date = SimpleDateFormat("yyyyMMdd-hhmmss", Locale.US).format(Date())
             val dir = File(Environment.getExternalStorageDirectory().absolutePath + "/groggomat")
             dir.mkdirs()
 
@@ -563,7 +561,7 @@ public class MainActivity : Activity(), AnkoLogger {
         if(searchingForPeers) {
             searchingForPeers = false
             if (peers.size >= 0) {
-                selector("Which peer?", peers.map { d -> d.deviceName }.toList(), { i ->
+                selector("Which peer?", peers.map { d -> d.deviceName }.toList(), { _, i ->
                     connectToDevice(peers[i])
                 })
             } else {
@@ -605,7 +603,19 @@ data class KryssType(val name:String, val description:String, val color:Int, val
                 KryssType("Svag", "4 cl 17% sprit", 0xff8e9103.toInt(), 0.17),
                 KryssType("Vanlig", "4 cl 40% sprit\n1 burk öl/cider\n~2 dl vin", 0xff906500.toInt(), 0.4),
                 KryssType("Fin", "4 cl 40% finsprit", 0xff051e76.toInt(), 0.4),
-                KryssType("Wiskey", "4 cl wiskey", 0xff962000.toInt(), 0.4)
+                KryssType("Övrigt", "Kryss utan sprit", 0xff962000.toInt(), 0.0)
         )
     }
 }
+
+val <E> LongSparseArray<E>.values: Sequence<E>
+    get() {
+        val t = this;
+        return buildSequence {
+            val size = t.size()
+            for (i in 0..size - 1) {
+                if (size != t.size()) throw ConcurrentModificationException()
+                yield(t.valueAt(i));
+            }
+        }
+    }

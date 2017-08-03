@@ -1,15 +1,24 @@
 package org.altekamereren.groggomat
 
+import android.app.Dialog
 import android.app.DialogFragment
 import android.app.Fragment
 import android.content.Context
 import android.content.res.ColorStateList
 import android.database.sqlite.SQLiteDatabase
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.Animation
+import android.view.animation.Transformation
+import android.widget.AbsoluteLayout
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.support.v7.appcompat.R as AR
 
 import kotlinx.android.synthetic.main.kryss_dialog.view.*
@@ -27,18 +36,18 @@ public class KryssDialogFragment() : DialogFragment() {
         val replaces_device:String? = arguments.getString("replaces_device")
         var replaceKryss: Kryss? = null
 
-        val buttons = arrayOf(v.weak, v.strong, v.delux, v.food)
-        val descriptions = arrayOf(v.weakText, v.strongText, v.deluxText, v.foodText)
+        val buttons = arrayOf<Button>(v.weak, v.strong, v.delux, v.food)
+        val descriptions = arrayOf<TextView>(v.weakText, v.strongText, v.deluxText, v.foodText)
 
         if(replaces_id != null && replaces_device != null) {
             replaceKryss = database.use {
                 select(Kryss.table, *Kryss.selectList)
-                    .where("ifnull(real_id, _id) = {replaces_id} and device = {replaces_device}", "replaces_id" to replaces_id, "replaces_device" to replaces_device)
+                    .whereArgs("ifnull(real_id, _id) = {replaces_id} and device = {replaces_device}", "replaces_id" to replaces_id, "replaces_device" to replaces_device)
                     .parseOpt(Kryss.parser)
             }
             if(replaceKryss != null) {
                 for (i in buttons.indices) {
-                    if (i != replaceKryss.type) buttons[i].enabled = false
+                    if (i != replaceKryss.type) buttons[i].isEnabled = false
                     else kryss[i] = replaceKryss.count
                 }
             }
@@ -49,7 +58,25 @@ public class KryssDialogFragment() : DialogFragment() {
             /*for(i in kryss.indices){
                 kamerer.kryss[i] += kryss[i]
             }*/
-            dialog.dismiss();
+
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+
+            var a = object : Animation() {
+                override fun applyTransformation(interpolatedTime: Float, t: Transformation?) {
+                    view.alpha = 1.0f-interpolatedTime;
+                }
+            }
+
+            a.setAnimationListener(object : Animation.AnimationListener {
+
+                override fun onAnimationRepeat(animation: Animation?) {}
+
+                override fun onAnimationStart(animation: Animation?) {}
+            })
+            a.duration = 500;
+            v.startAnimation(a);
+
+
             val storeKryss = kryss.indices.filter { i -> kryss[i] > 0 || i == replaceKryss?.type }
                     .map { i -> Kryss(null, (ctx as MainActivity).deviceId, i, kryss[i], replaceKryss?.time ?: System.currentTimeMillis(), kamererId, replaceKryss?.id, replaceKryss?.device) }.toTypedArray()
 
@@ -62,7 +89,7 @@ public class KryssDialogFragment() : DialogFragment() {
 
             (ctx as MainActivity).updateKryssLists(replaces_id != null)
         }
-        v.kryssa.enabled = false
+        v.kryssa.isEnabled = false
 
         for(i in buttons.indices){
             if(android.os.Build.VERSION.SDK_INT >= 21) {
@@ -76,13 +103,13 @@ public class KryssDialogFragment() : DialogFragment() {
             buttons[i].setOnClickListener {
                 kryss[i]++;
                 buttons[i].text = "${KryssType.types[i].name}: ${kryss[i]}"
-                v.kryssa.enabled = true
+                v.kryssa.isEnabled = true
             }
 
             buttons[i].setOnLongClickListener {
                 kryss[i] = 0;
                 buttons[i].text = "${KryssType.types[i].name}: ${kryss[i]}";
-                v.kryssa.enabled = replaceKryss != null || kryss.any { n -> n > 0 }
+                v.kryssa.isEnabled = replaceKryss != null || kryss.any { n -> n > 0 }
                 true
             }
 
@@ -95,7 +122,6 @@ public class KryssDialogFragment() : DialogFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setStyle(DialogFragment.STYLE_NORMAL, AR.style.Theme_AppCompat_Dialog)
+        //setStyle(DialogFragment.STYLE_NORMAL, AR.style.Theme_AppCompat_Dialog)
     }
 }
-
