@@ -475,7 +475,7 @@ public class MainActivity : Activity(), AnkoLogger {
             }
 
             val sheetKamerer = workbook.createSheet("Kamererer", 1)
-            val colsKamerer = arrayOf("kamerer", "sex", "weight")
+            val colsKamerer = arrayOf("kamerer", "sex", "weight") + KryssType.types.map { (name) -> name }
             for(i in colsKamerer.indices) {
                 sheetKamerer.addCell(jxl.write.Label(i, 0, colsKamerer[i]))
             }
@@ -488,6 +488,9 @@ public class MainActivity : Activity(), AnkoLogger {
                 val w = kamerer.weight
                 if(w != null) {
                     sheetKamerer.addCell(jxl.write.Number(2, row, w))
+                }
+                for(i in KryssType.types.indices) {
+                    sheetKamerer.addCell(jxl.write.Number(3+i, row, kamerer.kryss[i].toDouble()))
                 }
             }
 
