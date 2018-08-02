@@ -7,7 +7,7 @@ import org.jetbrains.anko.*
 import org.jetbrains.anko.db.*
 import java.util.*
 
-class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatabase", null, 9), AnkoLogger{
+class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatabase", null, 10), AnkoLogger{
 
     companion object {
         private var instance: MyDatabaseOpenHelper? = null
@@ -48,33 +48,42 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
         }*/
 
         var men = arrayOf(
-                "Andreas Hauspurg",
+                "Anders \"Taggen\" Rosenqvist",
+                "Christoffer Svensson",
                 "Damir Basic Knezevic",
-                "David Wahlqvist",
+                "David Ohlin",
+                "David Wahlqvist ",
                 "Douglas Clifford",
                 "Erik Löfquist",
+                "Gustaf Bergström",
+                "Hjalmar Lind",
                 "Jens Ogniewski",
                 "Jesper Hasselquist",
                 "Johan Ruuskanen",
+                "Ludvig Hagmar",
                 "Mattias Lilja",
-                "Olof Zetterqvist",
+                "Niklas Dichter",
                 "Oskar Fransén",
-                "Peder Andersson",
-                "Per Nelsson",
+                "Peder Anderson",
                 "Philip Ljungkvist",
-                "Pontus Persson",
+                "Pontus Persson ",
+                "Robert Hansen Jagrelius",
                 "Sam Persson",
+                "Simon Susnjevic",
                 "Svante Rosenlind",
+                "Tobias Alex-Petersen",
+                "Victor Pihl",
                 "Viktor Hjertenstein",
                 "Övrig man 1",
                 "Övrig man 2")
 
         var women = arrayOf(
                 "Carolina Svensson",
+                "Elin Johansson",
                 "Elin Svensson",
-                "Elisabet Benson",
-                "Ingeborg Hjorth",
-                "Jules Hanley",
+                "Ester Randahl",
+                "Frida Nilsson",
+                "Hanna Ekström",
                 "Övrig kvinna 1",
                 "Övrig kvinna 2")
 

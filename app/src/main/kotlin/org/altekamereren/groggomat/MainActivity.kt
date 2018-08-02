@@ -1,8 +1,10 @@
 package org.altekamereren.groggomat
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteDatabase
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
@@ -10,6 +12,8 @@ import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Bundle
 import android.os.Environment
+import android.support.v4.app.ActivityCompat
+import android.support.v4.content.ContextCompat
 import android.util.LongSparseArray
 import android.view.Menu
 import android.view.MenuItem
@@ -20,7 +24,11 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import jxl.Workbook
 import jxl.WorkbookSettings
+import jxl.write.DateTime
+import jxl.write.Label
+import jxl.write.Number
 import org.jetbrains.anko.*
+import org.jetbrains.anko.custom.async
 import org.jetbrains.anko.db.insert
 import org.jetbrains.anko.db.rowParser
 import org.jetbrains.anko.db.select
@@ -29,6 +37,7 @@ import java.io.*
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.*
@@ -99,7 +108,7 @@ data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, v
 
 class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boolean, var updated: Long) {
     var alcohol:Double = 0.0
-    val kryss = Array(KryssType.types.size, { i -> 0 })
+    val kryss = Array(KryssType.types.size) { _ -> 0 }
     public fun update(db: SQLiteDatabase) {
         val weight = weight
         if(weight != null) {
@@ -119,6 +128,16 @@ class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boo
                     .exec()
         }
     }
+
+    public fun alcoholDissipation(initialAlcohol:Double, dt:Long) : Double {
+        return Math.max(0.0, initialAlcohol - (if (male) 0.15 else 0.17) * dt / 3600000)
+    }
+
+    public fun bloodAlcoholIncreaseAfterDrink(drinkAlcohol:Double): Double? {
+        return weight?.let { weight ->
+            0.806 * drinkAlcohol * 25.0 * 1.2  / ((if (male) 0.58 else 0.49) * weight)
+        }
+    }
 }
 
 
@@ -126,11 +145,12 @@ public class MainActivity : Activity(), AnkoLogger {
     var intentFilter : IntentFilter = IntentFilter()
     var receiver: WiFiDirectBroadcastReceiver? = null
     var deviceId: String = ""
+    public val VERSION = "groggomat 2018" // Also update app name
 
     private var updater: ScheduledFuture<*>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super<Activity>.onCreate(savedInstanceState)
+        super.onCreate(savedInstanceState)
 
         val prefs = getPreferences(Context.MODE_PRIVATE)
         deviceId = prefs.getString("deviceId","")
@@ -208,18 +228,17 @@ public class MainActivity : Activity(), AnkoLogger {
                 var lastTime = 0L
                 for(kryss in kamererKryss.value.sortedBy { it.time }) {
                     kamerer.kryss[kryss.type] += kryss.count
-                    val weight = kamerer.weight
-                    if(weight != null) {
+                    if (kamerer.weight != null) {
                         val kryssType = KryssType.types[kryss.type]
-                        val remainingAlcohol = Math.max(0.0, alcohol - (if (kamerer.male) 0.15 else 0.17) * (kryss.time - lastTime) / 3600000)
-                        val newAlcohol = remainingAlcohol + 0.806 * kryssType.alcohol * 25.0 * 1.2 * kryss.count / ((if (kamerer.male) 0.58 else 0.49) * weight)
+                        val remainingAlcohol = kamerer.alcoholDissipation(alcohol, kryss.time - lastTime)
+                        val newAlcohol = remainingAlcohol + (kamerer.bloodAlcoholIncreaseAfterDrink(kryssType.alcohol*kryss.count) ?: 0.0)
                         alcohol = newAlcohol
                         kryss.alcohol = alcohol
                     }
                     lastTime = kryss.time
                 }
                 if(kamerer.weight != null) {
-                    kamerer.alcohol = Math.max(0.0, alcohol - (if (kamerer.male) 0.15 else 0.17) * (time - lastTime) / 3600000)
+                    kamerer.alcohol = kamerer.alcoholDissipation(alcohol, time - lastTime)
                 }
             }
             info("Time to calc kryss: ${System.currentTimeMillis() - time}")
@@ -238,28 +257,28 @@ public class MainActivity : Activity(), AnkoLogger {
     }
 
     override fun onDestroy() {
-        super<Activity>.onDestroy()
+        super.onDestroy()
     }
 
     override fun onStart() {
-        super<Activity>.onStart()
+        super.onStart()
         startServer()
     }
 
     override fun onStop() {
-        super<Activity>.onStop()
+        super.onStop()
         serverTask?.cancel(true)
     }
 
     override fun onResume() {
-        super<Activity>.onResume()
+        super.onResume()
         registerReceiver(receiver, intentFilter)
         val sch = Executors.newScheduledThreadPool(1) as ScheduledThreadPoolExecutor
         updater = sch.scheduleAtFixedRate({ doAsync { uiThread { updateKryssLists(false) }} }, 60, 60, TimeUnit.SECONDS) ;
     }
 
     override fun onPause() {
-        super<Activity>.onPause()
+        super.onPause()
         unregisterReceiver(receiver)
         updater?.cancel(true)
     }
@@ -273,13 +292,13 @@ public class MainActivity : Activity(), AnkoLogger {
                 val myLatestKryss =
                         select("Kryss", "device", "max(ifnull(real_id, _id))")
                                 .groupBy("device")
-                                .parseList(rowParser({ device: String, id: Long -> DeviceLatestKryss(device, id) }))
+                                .parseList(rowParser { device: String, id: Long -> DeviceLatestKryss(device, id) })
 
                 val mapper = jacksonObjectMapper()
                 mapper.configure(JsonGenerator.Feature.AUTO_CLOSE_TARGET, false)
                 mapper.configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, false)
 
-                val protocol = "groggomat 2"
+                val protocol = VERSION
                 mapper.writeValue(outputStream, protocol)
                 outputStream.flush()
                 val theirProtocol = mapper.readValue<String>(inputStream)
@@ -295,7 +314,7 @@ public class MainActivity : Activity(), AnkoLogger {
                 val theirLatestKryss = jsonParser.readValueAs<List<DeviceLatestKryss>>(object : TypeReference<List<DeviceLatestKryss>>() {})
                 info("Received $theirLatestKryss")
 
-                val kryssPairs = myLatestKryss.map { my -> KryssPair(my, theirLatestKryss.firstOrNull({ their -> their.device == my.device })) }
+                val kryssPairs = myLatestKryss.map { my -> KryssPair(my, theirLatestKryss.firstOrNull { their -> their.device == my.device }) }
 
                 val newerKryss = kryssPairs.filter { p -> p.their == null || p.my.latestKryss > p.their.latestKryss }.map { p -> DeviceLatestKryss(p.my.device, p.their?.latestKryss ?: 0) }
 
@@ -410,6 +429,8 @@ public class MainActivity : Activity(), AnkoLogger {
         return true
     }
 
+    private val PERMISSIONS_REQUEST_STORAGE: Int = 1
+
     override fun onOptionsItemSelected(item: MenuItem?): Boolean {
         // Handle action bar item clicks here. The action bar will
         // automatically handle clicks on the Home/Up button, so long
@@ -452,71 +473,33 @@ public class MainActivity : Activity(), AnkoLogger {
         }
 
         if (id == R.id.action_export) {
-            val date = SimpleDateFormat("yyyyMMdd-hhmmss", Locale.US).format(Date())
-            val dir = File(Environment.getExternalStorageDirectory().absolutePath + "/groggomat")
-            dir.mkdirs()
+            if (ContextCompat.checkSelfPermission(this,
+                            Manifest.permission.READ_CONTACTS)
+                    != PackageManager.PERMISSION_GRANTED) {
 
-            val file = File(dir, "$date.xls")
+                // Permission is not granted
+                // Should we show an explanation?
+                //if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                //                Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+                    // Show an explanation to the user *asynchronously* -- don't block
+                    // this thread waiting for the user's response! After the user
+                    // sees the explanation, try again to request the permission.
+                //} else {
+                    // No explanation needed, we can request the permission.
+                    ActivityCompat.requestPermissions(this,
+                            arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                            PERMISSIONS_REQUEST_STORAGE)
 
-            val wbSettings = WorkbookSettings()
-            wbSettings.locale = Locale("en", "EN")
-            val workbook = Workbook.createWorkbook(file, wbSettings)
-            val sheet = workbook.createSheet("Kryss", 0)
-            val cols = arrayOf("kamerer", "time", "type", "count")
-            for(i in cols.indices) {
-                sheet.addCell(jxl.write.Label(i, 0, cols[i]))
-            }
-            for (i in kryssCache.indices) {
-                val kryss = kryssCache[i]
-                sheet.addCell(jxl.write.Label(0, i+1, kamererer[kryss.kamerer]!!.name))
-                sheet.addCell(jxl.write.DateTime(1, i+1, Date(kryss.time)))
-                sheet.addCell(jxl.write.Label(2, i+1, KryssType.types[kryss.type].name))
-                sheet.addCell(jxl.write.Number(3, i+1, kryss.count.toDouble()))
-            }
-
-            val sheetKamerer = workbook.createSheet("Kamererer", 1)
-            val colsKamerer = arrayOf("kamerer", "sex", "weight") + KryssType.types.map { (name) -> name }
-            for(i in colsKamerer.indices) {
-                sheetKamerer.addCell(jxl.write.Label(i, 0, colsKamerer[i]))
+                    // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
+                    // app-defined int constant. The callback method gets the
+                    // result of the request.
+                //}
+            } else {
+                exportData()
             }
 
-            var row = 0
-            for(kamerer in kamererer.values.sortedBy({it.name})) {
-                row++
-                sheetKamerer.addCell(jxl.write.Label(0, row, kamerer.name))
-                sheetKamerer.addCell(jxl.write.Label(1, row, if(kamerer.male) "man" else "woman"))
-                val w = kamerer.weight
-                if(w != null) {
-                    sheetKamerer.addCell(jxl.write.Number(2, row, w))
-                }
-                for(i in KryssType.types.indices) {
-                    sheetKamerer.addCell(jxl.write.Number(3+i, row, kamerer.kryss[i].toDouble()))
-                }
-            }
 
-            workbook.write()
-            workbook.close()
 
-            toast("Wrote data to ${file.absolutePath}")
-
-            OutputStreamWriter(FileOutputStream(File(dir, "$date-raw.csv"))).use { writer ->
-                writer.write("id, device, type, count, time, kamerer, replaces_id, replaces_device\n")
-                database.use {
-                    for (kryss in select("Kryss", *Kryss.selectList).parseList(Kryss.parser)) {
-                        writer.write("${kryss.id}, ${kryss.device}, ${kryss.type}, ${kryss.count}, ${kryss.time}, ${kryss.kamerer}, ${kryss.replaces_id}, ${kryss.replaces_device}\n")
-                    }
-                }
-            }
-
-            /*val readableFile = File(dir, "$date-readable.csv")
-            OutputStreamWriter(FileOutputStream(File(dir, "$date-readable.csv"))).use { writer ->
-                writer.write("kamerer, time, type, count\n")
-                database.use {
-                    for (kryss in select("Kryss k", *SmallKryss.selectList).where("not exists (select * from Kryss r where r.replaces_id = ifnull(k.real_id, k._id) and r.replaces_device = k.device)").parseList(SmallKryss.parser)) {
-                        writer.write("${kamererer[kryss.kamerer].name}, ${Date(kryss.time)}, ${KryssType.types[kryss.type].name}, ${kryss.count}\n")
-                    }
-                }
-            }*/
             return true
         }
 
@@ -526,7 +509,97 @@ public class MainActivity : Activity(), AnkoLogger {
             return true
         }
 
-        return super<Activity>.onOptionsItemSelected(item)
+        return super.onOptionsItemSelected(item)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int,
+                                            permissions: Array<String>, grantResults: IntArray) {
+        when (requestCode) {
+            PERMISSIONS_REQUEST_STORAGE -> {
+                // If request is cancelled, the result arrays are empty.
+                if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
+                    exportData()
+                } else {
+                    // permission denied, boo! Disable the
+                    // functionality that depends on this permission.
+                }
+                return
+            }
+
+        // Add other 'when' lines to check for other
+        // permissions this app might request.
+            else -> {
+                // Ignore all other requests.
+            }
+        }
+    }
+
+    private fun exportData() {
+        val date = SimpleDateFormat("yyyyMMdd-hhmmss", Locale.US).format(Date())
+        val dir = File(Environment.getExternalStorageDirectory().absolutePath + "/groggomat")
+        dir.mkdirs()
+
+        val file = File(dir, "$date.xls")
+
+        val wbSettings = WorkbookSettings()
+        wbSettings.locale = Locale("en", "EN")
+        val workbook = Workbook.createWorkbook(file, wbSettings)
+        val sheet = workbook.createSheet("Kryss", 0)
+        val cols = arrayOf("kamerer", "time", "type", "count")
+        for (i in cols.indices) {
+            sheet.addCell(Label(i, 0, cols[i]))
+        }
+        for (i in kryssCache.indices) {
+            val kryss = kryssCache[i]
+            sheet.addCell(Label(0, i + 1, kamererer[kryss.kamerer]!!.name))
+            sheet.addCell(DateTime(1, i + 1, Date(kryss.time)))
+            sheet.addCell(Label(2, i + 1, KryssType.types[kryss.type].name))
+            sheet.addCell(Number(3, i + 1, kryss.count.toDouble()))
+        }
+
+        val sheetKamerer = workbook.createSheet("Kamererer", 1)
+        val colsKamerer = arrayOf("kamerer", "sex", "weight") + KryssType.types.map { (name) -> name }
+        for (i in colsKamerer.indices) {
+            sheetKamerer.addCell(Label(i, 0, colsKamerer[i]))
+        }
+
+        var row = 0
+        for (kamerer in kamererer.values.sortedBy { it.name }) {
+            row++
+            sheetKamerer.addCell(Label(0, row, kamerer.name))
+            sheetKamerer.addCell(Label(1, row, if (kamerer.male) "man" else "woman"))
+            val w = kamerer.weight
+            if (w != null) {
+                sheetKamerer.addCell(Number(2, row, w))
+            }
+            for (i in KryssType.types.indices) {
+                sheetKamerer.addCell(Number(3 + i, row, kamerer.kryss[i].toDouble()))
+            }
+        }
+
+        workbook.write()
+        workbook.close()
+
+        toast("Wrote data to ${file.absolutePath}")
+
+        OutputStreamWriter(FileOutputStream(File(dir, "$date-raw.csv"))).use { writer ->
+            writer.write("id, device, type, count, time, kamerer, replaces_id, replaces_device\n")
+            database.use {
+                for (kryss in select("Kryss", *Kryss.selectList).parseList(Kryss.parser)) {
+                    writer.write("${kryss.id}, ${kryss.device}, ${kryss.type}, ${kryss.count}, ${kryss.time}, ${kryss.kamerer}, ${kryss.replaces_id}, ${kryss.replaces_device}\n")
+                }
+            }
+        }
+
+        /*val readableFile = File(dir, "$date-readable.csv")
+        OutputStreamWriter(FileOutputStream(File(dir, "$date-readable.csv"))).use { writer ->
+            writer.write("kamerer, time, type, count\n")
+            database.use {
+                for (kryss in select("Kryss k", *SmallKryss.selectList).where("not exists (select * from Kryss r where r.replaces_id = ifnull(k.real_id, k._id) and r.replaces_device = k.device)").parseList(SmallKryss.parser)) {
+                    writer.write("${kamererer[kryss.kamerer].name}, ${Date(kryss.time)}, ${KryssType.types[kryss.type].name}, ${kryss.count}\n")
+                }
+            }
+        }*/
     }
 
     private fun connectToDevice(d: WifiP2pDevice) {
@@ -564,9 +637,9 @@ public class MainActivity : Activity(), AnkoLogger {
         if(searchingForPeers) {
             searchingForPeers = false
             if (peers.size >= 0) {
-                selector("Which peer?", peers.map { d -> d.deviceName }.toList(), { _, i ->
+                selector("Which peer?", peers.map { d -> d.deviceName }.toList()) { _, i ->
                     connectToDevice(peers[i])
-                })
+                }
             } else {
                 toast("No peers found")
             }

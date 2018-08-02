@@ -95,7 +95,7 @@ public class KamererFragment : Fragment()
                                 var weightInput:EditText? = null
                                 weightInput = editText {
                                     inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-                                    onEditorAction { textView, actionId, keyEvent ->
+                                    onEditorAction { _, actionId, _ ->
                                         if(actionId and EditorInfo.IME_MASK_ACTION == EditorInfo.IME_ACTION_DONE) {
                                             val d = parseDouble(weightInput!!.text.toString())
                                             if(d != null) {
@@ -126,7 +126,7 @@ public class KamererFragment : Fragment()
             }
             listView {
                 adapter = listAdapter
-                setOnItemClickListener { adapterView, view, position, id ->
+                setOnItemClickListener { _, _, position, _ ->
                     val ft = fragmentManager.beginTransaction();
                     val prev = fragmentManager.findFragmentByTag("dialog");
                     if (prev != null) {

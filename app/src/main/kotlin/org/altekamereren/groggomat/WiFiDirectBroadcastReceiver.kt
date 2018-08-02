@@ -22,15 +22,15 @@ public class WiFiDirectBroadcastReceiver(val manager : WifiP2pManager, val chann
                 activity.toast("Wifi P2P is disabled")
             }
         } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION == action) {
-            manager.requestPeers(channel, { peers ->
+            manager.requestPeers(channel) { peers ->
                 activity.peersReceived(peers.deviceList.toList())
-            })
+            }
         } else if (WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION == action) {
-            manager.requestConnectionInfo(channel, { info ->
+            manager.requestConnectionInfo(channel) { info ->
                 if(info != null) {
                     activity.connected(info)
                 }
-            })
+            }
         } else if (WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION == action) {
             // Respond to this device's wifi state changing
         }

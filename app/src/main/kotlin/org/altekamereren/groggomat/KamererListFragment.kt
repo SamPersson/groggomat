@@ -1,7 +1,7 @@
 package org.altekamereren.groggomat
 
-import android.app.Activity
 import android.app.ListFragment
+import android.content.Context
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
@@ -17,7 +17,7 @@ public class KamererListFragment : ListFragment() {
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
 
-        listView.setOnItemLongClickListener { adapterView, view, position, id ->
+        listView.setOnItemLongClickListener { _, _, _, id ->
             val newFragment = KamererFragment().withArguments("kamerer" to id);
             fragmentManager.beginTransaction().replace(android.R.id.content, newFragment).addToBackStack(null).commit()
             true
@@ -31,12 +31,12 @@ public class KamererListFragment : ListFragment() {
         (listAdapter as ArrayAdapter<*>).notifyDataSetChanged()
     }
 
-    override fun onAttach(activity: Activity?) {
-        super.onAttach(activity)
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
 
         kamerererByName = (ctx as MainActivity).kamererer.values.toList().sortedBy({it.name})
 
-        listAdapter = object: ArrayAdapter<Kamerer>(activity, -1, kamerererByName){
+        listAdapter = object: ArrayAdapter<Kamerer>(context, -1, kamerererByName){
             public inline fun <T: Any> view(crossinline f: AnkoContext<*>.() -> T): T {
                 var view: T? = null
                 context.UI { view = f() }
