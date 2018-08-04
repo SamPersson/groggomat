@@ -2,14 +2,14 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 android {
-    compileSdkVersion 25
+    compileSdkVersion 27
 
     defaultConfig {
         applicationId "org.altekamereren.groggomat"
         minSdkVersion 23
-        targetSdkVersion 25
-        versionCode 1
-        versionName "1.0"
+        targetSdkVersion 27
+        versionCode 11
+        versionName "1.1"
     }
     buildTypes {
         release {
@@ -45,13 +45,17 @@ buildscript {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation 'com.android.support:appcompat-v7:25.4.0'
+
+    implementation 'com.android.support:appcompat-v7:27.+'
     implementation "org.jetbrains.kotlin:kotlin-android-sdk-annotations:1.0.0"
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:0.24.0"
     implementation "org.jetbrains.anko:anko:$anko_version"
     implementation "com.fasterxml.jackson.module:jackson-module-kotlin:2.9.6"
     implementation 'net.sourceforge.jexcelapi:jxl:2.6.12'
     implementation "joda-time:joda-time:2.10"
+    implementation "com.github.kittinunf.fuel:fuel-android:1.15.0"
+    implementation "com.github.kittinunf.fuel:fuel-coroutines:1.15.0"
 }
 
 kotlin {
@@ -59,4 +63,3 @@ kotlin {
         coroutines "enable"
     }
 }
-

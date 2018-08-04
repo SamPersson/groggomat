@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteDatabase
+import android.net.ConnectivityManager
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pInfo
@@ -17,18 +18,31 @@ import android.support.v4.content.ContextCompat
 import android.util.LongSparseArray
 import android.view.Menu
 import android.view.MenuItem
+import awaitObject
+import awaitString
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.PropertyNamingStrategy
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.github.kittinunf.fuel.Fuel
+import com.github.kittinunf.fuel.core.FuelManager
+import com.github.kittinunf.fuel.core.HttpException
+import com.github.kittinunf.fuel.core.ResponseDeserializable
+import com.github.kittinunf.fuel.core.interceptors.cUrlLoggingRequestInterceptor
 import jxl.Workbook
 import jxl.WorkbookSettings
 import jxl.write.DateTime
 import jxl.write.Label
 import jxl.write.Number
+import kotlinx.coroutines.experimental.launch
+import kotlinx.coroutines.experimental.withContext
 import org.jetbrains.anko.*
-import org.jetbrains.anko.custom.async
 import org.jetbrains.anko.db.insert
 import org.jetbrains.anko.db.rowParser
 import org.jetbrains.anko.db.select
@@ -37,7 +51,6 @@ import java.io.*
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.*
@@ -46,20 +59,21 @@ import kotlin.coroutines.experimental.buildSequence
 val PORT = 14156
 
 data class DeviceLatestKryss(val device:String, val latestKryss:Long)
-data class KryssPair(val my:DeviceLatestKryss, val their:DeviceLatestKryss?)
-data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, val time:Long, val kamerer:Long, val replaces_id:Long?, val replaces_device:String?) {
-    public var alcohol:Double = 0.0
+data class KryssPair(val my:DeviceLatestKryss?, val their:DeviceLatestKryss?)
+data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, val time:Long, val kamerer:Long, val replacesId:Long?, val replacesDevice:String?) {
+    var alcohol:Double = 0.0
 
     companion object {
         val table = "Kryss k"
         val selectList = arrayOf("ifnull(real_id, _id)", "device", "type", "count", "time", "kamerer", "replaces_id", "replaces_device")
-        val parser = rowParser { id:Long, device:String, type:Int, count:Int, time:Long, kamerer:Long, replaces_id:Any?, replaces_device:Any? ->
-            Kryss(id, device, type, count, time, kamerer, if(replaces_id is Long) replaces_id else null, if(replaces_device is String) replaces_device else null)
+        val parser = rowParser { id:Long, device:String, type:Int, count:Int, time:Long, kamerer:Long, replacesId:Any?, replacesDevice:Any? ->
+            Kryss(id, device, type, count, time, kamerer, replacesId as? Long, replacesDevice as? String)
         }
     }
-    public fun insert(db: SQLiteDatabase) : Kryss {
+
+    fun insert(db: SQLiteDatabase) : Kryss {
         if(id != null) {
-            if (replaces_id != null && replaces_device != null) {
+            if (replacesId != null && replacesDevice != null) {
                 db.insert("Kryss",
                         "real_id" to id,
                         "device" to device,
@@ -67,8 +81,8 @@ data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, v
                         "count" to count,
                         "time" to time,
                         "kamerer" to kamerer,
-                        "replaces_id" to replaces_id,
-                        "replaces_device" to replaces_device
+                        "replaces_id" to replacesId,
+                        "replaces_device" to replacesDevice
                 )
             } else {
                 db.insert("Kryss",
@@ -82,15 +96,15 @@ data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, v
             }
             return this
         } else {
-            val id = if (replaces_id != null && replaces_device != null) {
+            val id = if (replacesId != null && replacesDevice != null) {
                 db.insert("Kryss",
                         "device" to device,
                         "type" to type,
                         "count" to count,
                         "time" to time,
                         "kamerer" to kamerer,
-                        "replaces_id" to replaces_id,
-                        "replaces_device" to replaces_device
+                        "replaces_id" to replacesId,
+                        "replaces_device" to replacesDevice
                 )
             } else {
                 db.insert("Kryss",
@@ -101,7 +115,7 @@ data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, v
                         "kamerer" to kamerer
                 )
             }
-            return Kryss(id, device, type, count, time, kamerer, replaces_id, replaces_device)
+            return Kryss(id, device, type, count, time, kamerer, replacesId, replacesDevice)
         }
     }
 }
@@ -109,7 +123,7 @@ data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, v
 class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boolean, var updated: Long) {
     var alcohol:Double = 0.0
     val kryss = Array(KryssType.types.size) { _ -> 0 }
-    public fun update(db: SQLiteDatabase) {
+    fun update(db: SQLiteDatabase) {
         val weight = weight
         if(weight != null) {
             db.update("Kamerer",
@@ -129,11 +143,11 @@ class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boo
         }
     }
 
-    public fun alcoholDissipation(initialAlcohol:Double, dt:Long) : Double {
+    fun alcoholDissipation(initialAlcohol:Double, dt:Long) : Double {
         return Math.max(0.0, initialAlcohol - (if (male) 0.15 else 0.17) * dt / 3600000)
     }
 
-    public fun bloodAlcoholIncreaseAfterDrink(drinkAlcohol:Double): Double? {
+    fun bloodAlcoholIncreaseAfterDrink(drinkAlcohol:Double): Double? {
         return weight?.let { weight ->
             0.806 * drinkAlcohol * 25.0 * 1.2  / ((if (male) 0.58 else 0.49) * weight)
         }
@@ -141,11 +155,11 @@ class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boo
 }
 
 
-public class MainActivity : Activity(), AnkoLogger {
+class MainActivity : Activity(), AnkoLogger {
     var intentFilter : IntentFilter = IntentFilter()
     var receiver: WiFiDirectBroadcastReceiver? = null
     var deviceId: String = ""
-    public val VERSION = "groggomat 2018" // Also update app name
+    val VERSION = "groggomat 2018" // Also update app name
 
     private var updater: ScheduledFuture<*>? = null
 
@@ -191,8 +205,8 @@ public class MainActivity : Activity(), AnkoLogger {
             val rows = select("Kryss k", *Kryss.selectList).parseList(Kryss.parser)
             val replacedRows = HashMap<IdAndDevice, Kryss>()
             for(row in rows) {
-                if(row.replaces_id != null && row.replaces_device != null) {
-                    val replaces = IdAndDevice(row.replaces_id, row.replaces_device)
+                if(row.replacesId != null && row.replacesDevice != null) {
+                    val replaces = IdAndDevice(row.replacesId, row.replacesDevice)
                     if(replacedRows.containsKey(replaces)) {
                         // Pick one device to win
                         if(row.device > replacedRows[replaces]!!.device) {
@@ -205,7 +219,7 @@ public class MainActivity : Activity(), AnkoLogger {
             }
 
             // Skip replacing rows that were not picked, then filter replaced rows.
-            kryssCache = (rows.filter { r -> r.replaces_id == null} + replacedRows.values).filter { r -> !replacedRows.containsKey(IdAndDevice(r.id as Long, r.device))}.toMutableList()
+            kryssCache = (rows.filter { r -> r.replacesId == null} + replacedRows.values).filter { r -> !replacedRows.containsKey(IdAndDevice(r.id as Long, r.device))}.toMutableList()
             info("Time to load kryss: ${System.currentTimeMillis() - time}")
         }
         calculateKryss()
@@ -223,7 +237,7 @@ public class MainActivity : Activity(), AnkoLogger {
             info("Calculating kryss")
             val time = System.currentTimeMillis()
             for(kamererKryss in kryssCache.groupBy { it.kamerer }) {
-                val kamerer = kamererer[kamererKryss.key]!!;
+                val kamerer = kamererer[kamererKryss.key]!!
                 var alcohol = 0.0
                 var lastTime = 0L
                 for(kryss in kamererKryss.value.sortedBy { it.time }) {
@@ -256,10 +270,6 @@ public class MainActivity : Activity(), AnkoLogger {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-    }
-
     override fun onStart() {
         super.onStart()
         startServer()
@@ -274,7 +284,7 @@ public class MainActivity : Activity(), AnkoLogger {
         super.onResume()
         registerReceiver(receiver, intentFilter)
         val sch = Executors.newScheduledThreadPool(1) as ScheduledThreadPoolExecutor
-        updater = sch.scheduleAtFixedRate({ doAsync { uiThread { updateKryssLists(false) }} }, 60, 60, TimeUnit.SECONDS) ;
+        updater = sch.scheduleAtFixedRate({ doAsync { uiThread { updateKryssLists(false) }} }, 60, 60, TimeUnit.SECONDS)
     }
 
     override fun onPause() {
@@ -297,6 +307,7 @@ public class MainActivity : Activity(), AnkoLogger {
                 val mapper = jacksonObjectMapper()
                 mapper.configure(JsonGenerator.Feature.AUTO_CLOSE_TARGET, false)
                 mapper.configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, false)
+                mapper.propertyNamingStrategy = PropertyNamingStrategy.SNAKE_CASE
 
                 val protocol = VERSION
                 mapper.writeValue(outputStream, protocol)
@@ -316,7 +327,7 @@ public class MainActivity : Activity(), AnkoLogger {
 
                 val kryssPairs = myLatestKryss.map { my -> KryssPair(my, theirLatestKryss.firstOrNull { their -> their.device == my.device }) }
 
-                val newerKryss = kryssPairs.filter { p -> p.their == null || p.my.latestKryss > p.their.latestKryss }.map { p -> DeviceLatestKryss(p.my.device, p.their?.latestKryss ?: 0) }
+                val newerKryss = kryssPairs.filter { p -> p.their == null || p.my!!.latestKryss > p.their.latestKryss }.map { p -> DeviceLatestKryss(p.my!!.device, p.their?.latestKryss ?: 0) }
 
                 val kryssToSend = newerKryss.flatMap { newer ->
                     select(Kryss.table, *Kryss.selectList)
@@ -346,7 +357,7 @@ public class MainActivity : Activity(), AnkoLogger {
                     kryss.insert(this)
                 }
                 for (kamerer in theirKamererer) {
-                    val myKamerer = kamererer[kamerer.id];
+                    val myKamerer = kamererer[kamerer.id]
                     if (kamerer.updated > myKamerer.updated) {
                         myKamerer.weight = kamerer.weight
                         myKamerer.updated = kamerer.updated
@@ -358,6 +369,130 @@ public class MainActivity : Activity(), AnkoLogger {
             }
         } finally {
             syncing.release()
+        }
+    }
+
+    val SERVER = "https://groggoserver.azurewebsites.net"
+    val TAG = "2018"
+
+    val mapper = ObjectMapper()
+            .registerKotlinModule()
+            .setSerializationInclusion(JsonInclude.Include.NON_NULL)
+            .configure(JsonGenerator.Feature.AUTO_CLOSE_TARGET, false)
+            .configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, false)
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,false)
+
+    inline fun <reified T : Any> jacksonDeserializerOf() = object : ResponseDeserializable<T> {
+        override fun deserialize(reader: Reader): T? {
+            return mapper.readValue(reader)
+        }
+
+        override fun deserialize(content: String): T? {
+            return mapper.readValue(content)
+        }
+
+        override fun deserialize(bytes: ByteArray): T? {
+            return mapper.readValue(bytes)
+        }
+
+        override fun deserialize(inputStream: InputStream): T? {
+            return mapper.readValue(inputStream)
+        }
+    }
+
+    private suspend fun syncOnlineServer() {
+        val manager = FuelManager()
+        manager.addRequestInterceptor(cUrlLoggingRequestInterceptor())
+
+        syncing.acquire()
+        try {
+            val myLatestKryss = database.use {
+                select("Kryss", "device", "max(ifnull(real_id, _id))")
+                        .groupBy("device")
+                        .parseList(rowParser { device: String, id: Long -> DeviceLatestKryss(device, id) })
+            }
+
+
+            val theirLatestKryss = Fuel.get("$SERVER/$TAG/devices").awaitObject(jacksonDeserializerOf<List<DeviceLatestKryss>>())
+            info("Received $theirLatestKryss")
+
+            val kryssPairs = (myLatestKryss.map { my -> KryssPair(my, theirLatestKryss.firstOrNull { their -> their.device == my.device }) }
+                    + theirLatestKryss.map { their -> KryssPair(myLatestKryss.firstOrNull { my -> their.device == my.device }, their) }.filter { it.my == null })
+
+            val newerKryss = kryssPairs
+                    .filter { p -> p.my != null && (p.their == null || p.my.latestKryss > p.their.latestKryss) }
+                    .map { p -> DeviceLatestKryss(p.my!!.device, p.their?.latestKryss ?: 0) }
+
+            val olderKryss = kryssPairs
+                    .filter { p -> p.their != null && (p.my == null || p.my.latestKryss < p.their.latestKryss) }
+                    .map { p -> DeviceLatestKryss(p.their!!.device, p.my?.latestKryss ?: 0) }
+
+            for (older in olderKryss) {
+                val theirKryss = Fuel.get("$SERVER/$TAG/devices/${older.device}/kryss?newerThan=${older.latestKryss}").awaitObject(jacksonDeserializerOf<List<Kryss>>())
+                info("Received ${theirKryss.size} kryss for device: ${older.device}")
+                for (kryss in theirKryss) {
+                    database.use {
+                        kryss.insert(this)
+                    }
+                }
+            }
+
+            val kryssToSend = database.use {
+                newerKryss.flatMap { newer ->
+                    select(Kryss.table, *Kryss.selectList)
+                            .whereArgs("device = {device} and ifnull(real_id, _id) > {latestKryss}",
+                                    "device" to newer.device,
+                                    "latestKryss" to newer.latestKryss)
+                            .parseList(Kryss.parser)
+                }
+            }
+
+            if (kryssToSend.any()) {
+                info("Sending ${kryssToSend.size} kryss")
+                val body = mapper.writeValueAsString(kryssToSend)
+                val request = Fuel.put("$SERVER/$TAG/kryss").body(body)
+                request.headers["Content-Type"] = "application/json"
+                request.awaitString()
+            }
+
+            val theirKamererer = Fuel.get("$SERVER/$TAG/kamererer").awaitObject(jacksonDeserializerOf<List<Kamerer>>())
+            info("Received ${theirKamererer.size} kamererer")
+
+            for (kamerer in theirKamererer) {
+                val myKamerer = kamererer[kamerer.id]
+                if (kamerer.updated > myKamerer.updated) {
+                    myKamerer.weight = kamerer.weight
+                    myKamerer.updated = kamerer.updated
+                    database.use {
+                        myKamerer.update(this)
+                    }
+                }
+            }
+
+            for (myKamerer in kamererer.values) {
+                if (!theirKamererer.any { it.id == myKamerer.id && it.updated >= myKamerer.updated}) {
+                    val body = mapper.writeValueAsString(myKamerer)
+                    val request = Fuel.put("$SERVER/$TAG/kamererer").body(body)
+                    request.headers["Content-Type"] = "application/json"
+                    request.awaitString()
+                }
+            }
+
+            info("Sync complete")
+        } catch(e: Exception) {
+            error("Failed to sync", e)
+            withContext(kotlinx.coroutines.experimental.android.UI) {
+                toast("Sync failed: $e")
+            }
+            return
+        } finally {
+            syncing.release()
+        }
+
+        withContext(kotlinx.coroutines.experimental.android.UI) {
+            toast("Sync complete")
+            loadKamererer()
+            updateKryssLists(true)
         }
     }
 
@@ -504,9 +639,23 @@ public class MainActivity : Activity(), AnkoLogger {
         }
 
         if(id == R.id.action_stats) {
-            val newFragment = StatsFragment();
+            val newFragment = StatsFragment()
             fragmentManager.beginTransaction().replace(android.R.id.content, newFragment).addToBackStack(null).commit()
             return true
+        }
+
+        if(id == R.id.action_sync_online) {
+            val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetwork = cm.activeNetworkInfo
+            if(activeNetwork?.isConnectedOrConnecting != true) {
+                toast("Needs internet connection!")
+            } else {
+                toast("Syncing to online server")
+                launch {
+                    syncOnlineServer()
+                }
+            }
+            return true;
         }
 
         return super.onOptionsItemSelected(item)
@@ -586,7 +735,7 @@ public class MainActivity : Activity(), AnkoLogger {
             writer.write("id, device, type, count, time, kamerer, replaces_id, replaces_device\n")
             database.use {
                 for (kryss in select("Kryss", *Kryss.selectList).parseList(Kryss.parser)) {
-                    writer.write("${kryss.id}, ${kryss.device}, ${kryss.type}, ${kryss.count}, ${kryss.time}, ${kryss.kamerer}, ${kryss.replaces_id}, ${kryss.replaces_device}\n")
+                    writer.write("${kryss.id}, ${kryss.device}, ${kryss.type}, ${kryss.count}, ${kryss.time}, ${kryss.kamerer}, ${kryss.replacesId}, ${kryss.replacesDevice}\n")
                 }
             }
         }
@@ -595,7 +744,7 @@ public class MainActivity : Activity(), AnkoLogger {
         OutputStreamWriter(FileOutputStream(File(dir, "$date-readable.csv"))).use { writer ->
             writer.write("kamerer, time, type, count\n")
             database.use {
-                for (kryss in select("Kryss k", *SmallKryss.selectList).where("not exists (select * from Kryss r where r.replaces_id = ifnull(k.real_id, k._id) and r.replaces_device = k.device)").parseList(SmallKryss.parser)) {
+                for (kryss in select("Kryss k", *SmallKryss.selectList).where("not exists (select * from Kryss r where r.replacesId = ifnull(k.real_id, k._id) and r.replacesDevice = k.device)").parseList(SmallKryss.parser)) {
                     writer.write("${kamererer[kryss.kamerer].name}, ${Date(kryss.time)}, ${KryssType.types[kryss.type].name}, ${kryss.count}\n")
                 }
             }
@@ -603,8 +752,8 @@ public class MainActivity : Activity(), AnkoLogger {
     }
 
     private fun connectToDevice(d: WifiP2pDevice) {
-        val config = WifiP2pConfig();
-        config.deviceAddress = d.deviceAddress;
+        val config = WifiP2pConfig()
+        config.deviceAddress = d.deviceAddress
         receiver?.manager?.connect(receiver?.channel, config, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
                 toast("Connected to ${d.deviceAddress}")
@@ -686,12 +835,12 @@ data class KryssType(val name:String, val description:String, val color:Int, val
 
 val <E> LongSparseArray<E>.values: Sequence<E>
     get() {
-        val t = this;
+        val t = this
         return buildSequence {
             val size = t.size()
             for (i in 0..size - 1) {
                 if (size != t.size()) throw ConcurrentModificationException()
-                yield(t.valueAt(i));
+                yield(t.valueAt(i))
             }
         }
     }

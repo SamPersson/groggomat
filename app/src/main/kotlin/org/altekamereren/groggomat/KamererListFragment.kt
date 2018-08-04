@@ -1,5 +1,6 @@
 package org.altekamereren.groggomat
 
+import android.app.Activity
 import android.app.ListFragment
 import android.content.Context
 import android.graphics.Typeface
@@ -11,6 +12,41 @@ import android.widget.ArrayAdapter
 import android.widget.ListView
 import org.jetbrains.anko.*
 import java.util.*
+
+class KamererListFragmentUI(val kamerer: Kamerer = Kamerer(1,"Test", 50.0, true, 0)) : AnkoComponent<Activity> {
+    override fun createView(ui: AnkoContext<Activity>) = with(ui) {
+        linearLayout {
+            textView {
+                text = kamerer.name
+                textSize = 16f
+                typeface = Typeface.create("", Typeface.BOLD)
+            }.lparams(width = 0) {
+                width=0
+                margin=dip(10)
+                weight=1f
+                gravity= Gravity.CENTER_VERTICAL
+            }
+
+            if(kamerer.weight != null) {
+                textView {
+                    text = String.format("%.2f", kamerer.alcohol)
+                    textSize = 16f
+                    padding = dip(10)
+                }.lparams(width = wrapContent, height = matchParent)
+            }
+
+            for(i in kamerer.kryss.indices) {
+                textView {
+                    text = kamerer.kryss[i].toString()
+                    textSize = 16f
+                    typeface = Typeface.create("", Typeface.BOLD)
+                    backgroundColor = KryssType.types[i].color
+                    padding = dip(10)
+                }.lparams(width = wrapContent, height = matchParent) {}
+            }
+        }
+    }
+}
 
 public class KamererListFragment : ListFragment() {
 
@@ -44,42 +80,7 @@ public class KamererListFragment : ListFragment() {
             }
 
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View? {
-                val kamerer = kamerererByName[position];
-
-                val view = view {
-                    linearLayout {
-                        textView {
-                            text = kamerer.name
-                            textSize = 16f
-                            typeface = Typeface.create("", Typeface.BOLD)
-                        }.lparams(width = 0) {
-                            width=0
-                            margin=dip(10)
-                            weight=1f
-                            gravity= Gravity.CENTER_VERTICAL
-                        }
-
-                        if(kamerer.weight != null) {
-                            textView {
-                                text = java.lang.String.format("%.2f", kamerer.alcohol)
-                                textSize = 16f
-                                padding = dip(10)
-                            }.lparams(width = wrapContent, height = matchParent)
-                        }
-
-                        for(i in kamerer.kryss.indices) {
-                            textView {
-                                text = kamerer.kryss[i].toString()
-                                textSize = 16f
-                                typeface = Typeface.create("", Typeface.BOLD)
-                                backgroundColor = KryssType.types[i].color
-                                padding = dip(10)
-                            }.lparams(width = wrapContent, height = matchParent) {}
-                        }
-                    }
-                }
-
-                return view
+                return KamererListFragmentUI(kamerererByName[position]).createView(AnkoContext.create(ctx,act))
             }
 
             override fun getItemId(position: Int): Long {

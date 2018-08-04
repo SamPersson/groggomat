@@ -1,12 +1,14 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools" tools:context=".MainActivity">
-    <item android:id="@+id/action_connect" android:title="Anslut"
-        android:orderInCategory="100" app:showAsAction="never" />
-    <item android:id="@+id/action_sync" android:title="Synka"
-        android:orderInCategory="101" app:showAsAction="never" android:visible="false"/>
-    <item android:id="@+id/action_export" android:title="Exportera"
-        android:orderInCategory="102" app:showAsAction="never"/>
     <item android:id="@+id/action_stats" android:title="Stats"
-        android:orderInCategory="103" app:showAsAction="never"/>
+        android:orderInCategory="100" app:showAsAction="never"/>
+    <item android:id="@+id/action_sync_online" android:title="Synka online"
+        android:orderInCategory="101" app:showAsAction="never"/>
+    <item android:id="@+id/action_connect" android:title="Anslut"
+        android:orderInCategory="102" app:showAsAction="never" />
+    <item android:id="@+id/action_sync" android:title="Synka"
+        android:orderInCategory="103" app:showAsAction="never" android:visible="false"/>
+    <item android:id="@+id/action_export" android:title="Exportera fil"
+        android:orderInCategory="104" app:showAsAction="never"/>
 </menu>

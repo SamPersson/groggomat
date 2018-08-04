@@ -37,10 +37,10 @@ public class KamererFragment : Fragment()
                         text = "${dateFormat.format(Date(k.time))} ${k.device} ${k.id} ${KryssType.types[k.type].name} ${k.count}"
                         padding = dip(5)
                     }
-                    if(k.replaces_id != null && k.replaces_device != null) {
+                    if(k.replacesId != null && k.replacesDevice != null) {
                         textView {
                             textColor = 0xffff0000.toInt()
-                            text = "Replaces: ${k.replaces_device} ${k.replaces_id}"
+                            text = "Replaces: ${k.replacesDevice} ${k.replacesId}"
                             padding = dip(5)
                         }
                     }
