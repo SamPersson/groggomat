@@ -6,7 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import org.jetbrains.anko.*
 import org.jetbrains.anko.db.*
 
-class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatabase", null, 10), AnkoLogger{
+class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatabase", null, 11), AnkoLogger{
 
     companion object {
         private var instance: MyDatabaseOpenHelper? = null
@@ -47,42 +47,40 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
         }*/
 
         val men = arrayOf(
-                "Anders \"Taggen\" Rosenqvist",
-                "Christoffer Svensson",
-                "Damir Basic Knezevic",
-                "David Ohlin",
-                "David Wahlqvist ",
-                "Douglas Clifford",
-                "Erik Löfquist",
-                "Gustaf Bergström",
+                "Gabriel Frahm",
                 "Hjalmar Lind",
-                "Jens Ogniewski",
+                "Jakob Mellin",
+                "Oskar Fransén",
+                "Tobias Alex-Petersen",
                 "Jesper Hasselquist",
-                "Johan Ruuskanen",
-                "Ludvig Hagmar",
+                "Damir Basic Knezevic",
+                "Jens Ogniewski",
+                "Anders \"Taggen\" Rosenqvist",
+                "Peder Andersson",
+                "David Ohlin",
+                "Christoffer Lundgren",
+                "Erik Löfquist",
+                "Douglas Clifford",
                 "Mattias Lilja",
                 "Niklas Dichter",
-                "Oskar Fransén",
-                "Peder Anderson",
-                "Philip Ljungkvist",
-                "Pontus Persson ",
-                "Robert Hansen Jagrelius",
-                "Sam Persson",
-                "Simon Susnjevic",
-                "Svante Rosenlind",
-                "Tobias Alex-Petersen",
+                "Wictor Clifford",
+                "Pontus Persson",
+                "Mårten Ljungberg",
+                "Gunnar Österlund",
                 "Victor Pihl",
-                "Viktor Hjertenstein",
+                "Per Nelsson",
+                "Johan Ruuskanen",
                 "Övrig man 1",
                 "Övrig man 2")
 
         val women = arrayOf(
                 "Carolina Svensson",
+                "Elinor Alfredsson",
+                "Jules Hanley",
+                "Ingrid Torstensson",
+                "Olivia Markbo",
+                "Elisabet Edda Marianne Benson",
                 "Elin Johansson",
-                "Elin Svensson",
-                "Ester Randahl",
-                "Frida Nilsson",
-                "Hanna Ekström",
                 "Övrig kvinna 1",
                 "Övrig kvinna 2")
 

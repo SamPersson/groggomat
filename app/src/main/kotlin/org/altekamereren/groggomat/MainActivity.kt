@@ -158,7 +158,10 @@ class MainActivity : FragmentActivity(), CoroutineScope by MainScope(), AnkoLogg
     private var intentFilter : IntentFilter = IntentFilter()
     private var receiver: WiFiDirectBroadcastReceiver? = null
     var deviceId: String = ""
-    private val VERSION = "groggomat 2018" // Also update app name
+
+    private val SERVER = "https://groggoserver.azurewebsites.net"
+    private val TAG = "2019" // Also update app name
+    private val VERSION = "groggomat $TAG"
 
     private var updater: ScheduledFuture<*>? = null
 
@@ -376,9 +379,6 @@ class MainActivity : FragmentActivity(), CoroutineScope by MainScope(), AnkoLogg
         }
     }
 
-    private val SERVER = "https://groggoserver.azurewebsites.net"
-    private val TAG = "2018"
-
     val mapper: ObjectMapper = ObjectMapper()
             .registerKotlinModule()
             .setSerializationInclusion(JsonInclude.Include.NON_NULL)
@@ -415,7 +415,6 @@ class MainActivity : FragmentActivity(), CoroutineScope by MainScope(), AnkoLogg
                         .groupBy("device")
                         .parseList(rowParser { device: String, id: Long -> DeviceLatestKryss(device, id) })
             }
-
 
             val theirLatestKryss = Fuel.get("$SERVER/$TAG/devices").awaitObject(jacksonDeserializerOf<List<DeviceLatestKryss>>())
             info("Received $theirLatestKryss")
