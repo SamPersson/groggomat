@@ -79,7 +79,7 @@ public class KamererListFragment : ListFragment() {
                 return view!!
             }
 
-            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View? {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 return KamererListFragmentUI(kamerererByName[position]).createView(AnkoContext.create(ctx,act))
             }
 

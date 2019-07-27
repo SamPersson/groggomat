@@ -12,8 +12,8 @@ import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import org.jetbrains.anko.*
-import org.jetbrains.anko.sdk25.coroutines.onClick
-import org.jetbrains.anko.sdk25.coroutines.onEditorAction
+import org.jetbrains.anko.sdk27.coroutines.onClick
+import org.jetbrains.anko.sdk27.coroutines.onEditorAction
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -28,7 +28,7 @@ public class KamererFragment : Fragment()
 
         val dateFormat = SimpleDateFormat("yyyyMMdd hh:mm:ss", Locale.US)
 
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View? {
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
             val k = kryss[position];
 
             val view = view {

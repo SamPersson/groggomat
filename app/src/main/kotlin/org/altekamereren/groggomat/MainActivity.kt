@@ -13,13 +13,11 @@ import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Bundle
 import android.os.Environment
-import android.support.v4.app.ActivityCompat
-import android.support.v4.content.ContextCompat
 import android.util.LongSparseArray
 import android.view.Menu
 import android.view.MenuItem
-import awaitObject
-import awaitString
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.core.JsonParser
@@ -32,16 +30,16 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.github.kittinunf.fuel.Fuel
 import com.github.kittinunf.fuel.core.FuelManager
-import com.github.kittinunf.fuel.core.HttpException
 import com.github.kittinunf.fuel.core.ResponseDeserializable
 import com.github.kittinunf.fuel.core.interceptors.cUrlLoggingRequestInterceptor
+import com.github.kittinunf.fuel.coroutines.awaitObject
+import com.github.kittinunf.fuel.coroutines.awaitString
 import jxl.Workbook
 import jxl.WorkbookSettings
 import jxl.write.DateTime
 import jxl.write.Label
 import jxl.write.Number
-import kotlinx.coroutines.experimental.launch
-import kotlinx.coroutines.experimental.withContext
+import kotlinx.coroutines.*
 import org.jetbrains.anko.*
 import org.jetbrains.anko.db.insert
 import org.jetbrains.anko.db.rowParser
@@ -54,9 +52,8 @@ import java.net.Socket
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.*
-import kotlin.coroutines.experimental.buildSequence
 
-val PORT = 14156
+const val PORT = 14156
 
 data class DeviceLatestKryss(val device:String, val latestKryss:Long)
 data class KryssPair(val my:DeviceLatestKryss?, val their:DeviceLatestKryss?)
@@ -64,7 +61,7 @@ data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, v
     var alcohol:Double = 0.0
 
     companion object {
-        val table = "Kryss k"
+        const val table = "Kryss k"
         val selectList = arrayOf("ifnull(real_id, _id)", "device", "type", "count", "time", "kamerer", "replaces_id", "replaces_device")
         val parser = rowParser { id:Long, device:String, type:Int, count:Int, time:Long, kamerer:Long, replacesId:Any?, replacesDevice:Any? ->
             Kryss(id, device, type, count, time, kamerer, replacesId as? Long, replacesDevice as? String)
@@ -155,7 +152,7 @@ class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boo
 }
 
 
-class MainActivity : Activity(), AnkoLogger {
+class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
     var intentFilter : IntentFilter = IntentFilter()
     var receiver: WiFiDirectBroadcastReceiver? = null
     var deviceId: String = ""
@@ -167,7 +164,7 @@ class MainActivity : Activity(), AnkoLogger {
         super.onCreate(savedInstanceState)
 
         val prefs = getPreferences(Context.MODE_PRIVATE)
-        deviceId = prefs.getString("deviceId","")
+        deviceId = prefs.getString("deviceId","") ?: ""
         if(deviceId == "") {
             deviceId = UUID.randomUUID().toString()
             val editor = prefs.edit()
@@ -192,6 +189,11 @@ class MainActivity : Activity(), AnkoLogger {
                 .beginTransaction()
                 .replace(android.R.id.content, KamererListFragment())
                 .commit()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        cancel() // CoroutineScope.cancel
     }
 
     data class IdAndDevice(val id:Long, val device:String)
@@ -481,7 +483,7 @@ class MainActivity : Activity(), AnkoLogger {
             info("Sync complete")
         } catch(e: Exception) {
             error("Failed to sync", e)
-            withContext(kotlinx.coroutines.experimental.android.UI) {
+            withContext(Dispatchers.Main) {
                 toast("Sync failed: $e")
             }
             return
@@ -489,7 +491,7 @@ class MainActivity : Activity(), AnkoLogger {
             syncing.release()
         }
 
-        withContext(kotlinx.coroutines.experimental.android.UI) {
+        withContext(Dispatchers.Main) {
             toast("Sync complete")
             loadKamererer()
             updateKryssLists(true)
@@ -651,7 +653,7 @@ class MainActivity : Activity(), AnkoLogger {
                 toast("Needs internet connection!")
             } else {
                 toast("Syncing to online server")
-                launch {
+                launch(Dispatchers.IO)  {
                     syncOnlineServer()
                 }
             }
@@ -836,9 +838,9 @@ data class KryssType(val name:String, val description:String, val color:Int, val
 val <E> LongSparseArray<E>.values: Sequence<E>
     get() {
         val t = this
-        return buildSequence {
+        return sequence {
             val size = t.size()
-            for (i in 0..size - 1) {
+            for (i in 0 until size) {
                 if (size != t.size()) throw ConcurrentModificationException()
                 yield(t.valueAt(i))
             }

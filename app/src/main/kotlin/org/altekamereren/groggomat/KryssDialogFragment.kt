@@ -10,7 +10,7 @@ import android.view.animation.Animation
 import android.view.animation.Transformation
 import android.widget.Button
 import android.widget.TextView
-import android.support.v7.appcompat.R as AR
+import androidx.appcompat.R as AR
 
 import kotlinx.android.synthetic.main.kryss_dialog.view.*
 import org.jetbrains.anko.*
@@ -54,7 +54,7 @@ public class KryssDialogFragment() : DialogFragment() {
 
             var a = object : Animation() {
                 override fun applyTransformation(interpolatedTime: Float, t: Transformation?) {
-                    view.alpha = 1.0f-interpolatedTime;
+                    view!!.alpha = 1.0f-interpolatedTime;
                 }
             }
 

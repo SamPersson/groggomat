@@ -9,7 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import org.jetbrains.anko.*
-import org.jetbrains.anko.sdk25.coroutines.onClick
+import org.jetbrains.anko.sdk27.coroutines.onClick
 import org.joda.time.DateTime
 import org.joda.time.LocalDateTime
 import org.joda.time.format.DateTimeFormat
@@ -88,7 +88,7 @@ public class StatsFragment : Fragment() {
                                                     ?: 0).toString(dateFormat))
                                         }
                                     }
-                                    .filter { kv -> kv.value != null && kv.value > 0 }
+                                    .filter { kv -> kv.value != null && kv.value!! > 0 }
                                     .sortedByDescending { kv -> kv.value }
                                     .map { kv -> "%22s  %10.4f  %s".format(kv.description, kv.value, kv.kamerer.name) }
                                     .joinToString("\n")
