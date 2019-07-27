@@ -9,13 +9,13 @@ import org.jetbrains.anko.toast
 /**
  * A BroadcastReceiver that notifies of important Wi-Fi p2p events.
  */
-public class WiFiDirectBroadcastReceiver(val manager : WifiP2pManager, val channel : WifiP2pManager.Channel, val activity : MainActivity) : BroadcastReceiver() {
+class WiFiDirectBroadcastReceiver(val manager : WifiP2pManager, val channel : WifiP2pManager.Channel, private val activity : MainActivity) : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val action = intent.action;
+        val action = intent.action
 
         if (WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION == action) {
-            val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1);
+            val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)
             if (state == WifiP2pManager.WIFI_P2P_STATE_ENABLED) {
                 activity.toast("Wifi P2P is enabled")
             } else {

@@ -1,6 +1,6 @@
 package org.altekamereren.groggomat
 
-import android.app.Fragment
+import androidx.fragment.app.Fragment
 import android.content.Context
 import android.content.DialogInterface
 import android.os.Bundle
@@ -14,24 +14,28 @@ import android.widget.EditText
 import org.jetbrains.anko.*
 import org.jetbrains.anko.sdk27.coroutines.onClick
 import org.jetbrains.anko.sdk27.coroutines.onEditorAction
+import org.jetbrains.anko.support.v4.alert
+import org.jetbrains.anko.support.v4.ctx
+import org.jetbrains.anko.support.v4.toast
+import org.jetbrains.anko.support.v4.withArguments
 import java.text.SimpleDateFormat
 import java.util.*
 
-public class KamererFragment : Fragment()
+class KamererFragment : Fragment()
 {
-    public class ListAdapter(context: Context, val kryss:MutableList<Kryss>) : ArrayAdapter<Kryss>(context, -1, kryss) {
-        public inline fun <T: Any> view(crossinline f: AnkoContext<*>.() -> T): T {
+    class ListAdapter(context: Context, val kryss:MutableList<Kryss>) : ArrayAdapter<Kryss>(context, -1, kryss) {
+        private inline fun <T: Any> view(crossinline f: AnkoContext<*>.() -> T): T {
             var view: T? = null
             context.UI { view = f() }
             return view!!
         }
 
-        val dateFormat = SimpleDateFormat("yyyyMMdd hh:mm:ss", Locale.US)
+        private val dateFormat = SimpleDateFormat("yyyyMMdd hh:mm:ss", Locale.US)
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-            val k = kryss[position];
+            val k = kryss[position]
 
-            val view = view {
+            return view {
                 verticalLayout {
                     textView {
                         text = "${dateFormat.format(Date(k.time))} ${k.device} ${k.id} ${KryssType.types[k.type].name} ${k.count}"
@@ -46,22 +50,20 @@ public class KamererFragment : Fragment()
                     }
                 }
             }
-            return view;
         }
     }
 
-    var listAdapter: ListAdapter? = null
+    private var listAdapter: ListAdapter? = null
 
-    public fun updateData() {
+    fun updateData() {
         listAdapter?.kryss?.clear()
-        listAdapter?.kryss?.addAll(fetchKryss(arguments.getLong("kamerer")))
+        listAdapter?.kryss?.addAll(fetchKryss(arguments!!.getLong("kamerer")))
         listAdapter?.notifyDataSetChanged()
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        val kamererId = arguments.getLong("kamerer")
-        val kamerer = (ctx as MainActivity).kamererer[kamererId]
-        if(kamerer == null) throw Exception()
+        val kamererId = arguments!!.getLong("kamerer")
+        val kamerer = (ctx as MainActivity).kamererer[kamererId] ?: throw Exception()
 
         val kryss = ArrayList(fetchKryss(kamererId))
 
@@ -69,14 +71,14 @@ public class KamererFragment : Fragment()
         val listAdapter = listAdapter
 
         fun parseDouble(s:String?):Double? {
-            try {
-                return java.lang.Double.parseDouble(s ?: "")
+            return try {
+                java.lang.Double.parseDouble(s ?: "")
             } catch(e:NumberFormatException) {
-                return null
+                null
             }
         }
 
-        val view = ctx.verticalLayout {
+        return ctx.verticalLayout {
             linearLayout {
                 textView {
                     textSize = 24f
@@ -87,7 +89,7 @@ public class KamererFragment : Fragment()
                     hint = "Vikt i kilo"
                     padding = dip(5)
                     onClick {
-                        var dialog : DialogInterface? = null;
+                        var dialog : DialogInterface? = null
                         //val weightAlert:AlertDialogBuilder
                         val weightAlert = alert {
                             title = "Skriv in din vikt"
@@ -127,30 +129,28 @@ public class KamererFragment : Fragment()
             listView {
                 adapter = listAdapter
                 setOnItemClickListener { _, _, position, _ ->
-                    val ft = fragmentManager.beginTransaction();
-                    val prev = fragmentManager.findFragmentByTag("dialog");
+                    val ft = fragmentManager!!.beginTransaction()
+                    val prev = fragmentManager!!.findFragmentByTag("dialog")
                     if (prev != null) {
-                        ft.remove(prev);
+                        ft.remove(prev)
                     }
-                    ft.addToBackStack(null);
+                    ft.addToBackStack(null)
 
                     // Create and show the dialog.
                     val newFragment = KryssDialogFragment().withArguments(
                             "kamerer" to kamererId,
                             "replaces_id" to kryss[position].id!!,
-                            "replaces_device" to kryss[position].device);
-                    newFragment.show(ft, "dialog");
+                            "replaces_device" to kryss[position].device)
+                    newFragment.show(ft, "dialog")
                 }
             }
         }
-
-        return view
     }
 
     private fun fetchKryss(kamererId: Long): List<Kryss> {
         return (ctx as MainActivity).kryssCache
-                .filter({kryss -> kryss.kamerer == kamererId})
-                .sortedByDescending ({kryss -> kryss.time})
+                .filter { kryss -> kryss.kamerer == kamererId}
+                .sortedByDescending { kryss -> kryss.time}
     }
 
 }

@@ -1,6 +1,6 @@
 package org.altekamereren.groggomat
 
-import android.app.Fragment
+import androidx.fragment.app.Fragment
 import android.graphics.Typeface
 import android.os.Bundle
 import android.text.InputType
@@ -10,13 +10,15 @@ import android.view.ViewGroup
 import android.widget.TextView
 import org.jetbrains.anko.*
 import org.jetbrains.anko.sdk27.coroutines.onClick
+import org.jetbrains.anko.support.v4.ctx
+import org.jetbrains.anko.support.v4.toast
 import org.joda.time.DateTime
 import org.joda.time.LocalDateTime
 import org.joda.time.format.DateTimeFormat
 import java.util.*
 
 
-public class StatsFragment : Fragment() {
+class StatsFragment : Fragment() {
     data class KamererValue<T>(val kamerer:Kamerer, val value:T, val description:String? = null)
 
     private val dateFormat = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss").withLocale(Locale.UK)
@@ -25,7 +27,7 @@ public class StatsFragment : Fragment() {
         val mainActivity = (ctx as MainActivity)
 
         var statsView: TextView? = null
-        val view = ctx.verticalLayout {
+        return ctx.verticalLayout {
             isVerticalScrollBarEnabled = true
             val fromDate = editText {
                 inputType = InputType.TYPE_CLASS_DATETIME
@@ -77,8 +79,8 @@ public class StatsFragment : Fragment() {
                                 statsView!!.text = mainActivity.kamererer.values
                                     .filter { it.weight != null }
                                     .map { k ->
-                                        val kamererKryss = mainActivity.kryssCache.filter { it.kamerer == k.id }.toList();
-                                        val maxAlcoholKryss = kamererKryss.filter { it.time >= from && it.time < to }.maxBy { it.alcohol }
+                                        val kamererKryss = mainActivity.kryssCache.filter { it.kamerer == k.id }.toList()
+                                        val maxAlcoholKryss = kamererKryss.filter { it.time in from until to }.maxBy { it.alcohol }
                                         val remainingAlcohol = kamererKryss.filter { it.time < from }.maxBy { it.time }
                                                 ?.let { previousKryss -> k.alcoholDissipation(previousKryss.alcohol, from - previousKryss.time) }
                                         if (remainingAlcohol != null && (maxAlcoholKryss == null || remainingAlcohol > maxAlcoholKryss.alcohol)) {
@@ -100,8 +102,6 @@ public class StatsFragment : Fragment() {
                 typeface = Typeface.MONOSPACE
             }.lparams(width=matchParent, height=wrapContent)
         }
-
-        return view
     }
 
     private fun tryParse(v: String) : LocalDateTime?

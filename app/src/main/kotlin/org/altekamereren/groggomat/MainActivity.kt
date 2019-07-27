@@ -1,12 +1,12 @@
 package org.altekamereren.groggomat
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteDatabase
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pInfo
@@ -18,6 +18,7 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.core.JsonParser
@@ -31,7 +32,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.github.kittinunf.fuel.Fuel
 import com.github.kittinunf.fuel.core.FuelManager
 import com.github.kittinunf.fuel.core.ResponseDeserializable
-import com.github.kittinunf.fuel.core.interceptors.cUrlLoggingRequestInterceptor
+import com.github.kittinunf.fuel.core.interceptors.LogRequestAsCurlInterceptor
 import com.github.kittinunf.fuel.coroutines.awaitObject
 import com.github.kittinunf.fuel.coroutines.awaitString
 import jxl.Workbook
@@ -52,6 +53,7 @@ import java.net.Socket
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.*
+import kotlin.math.max
 
 const val PORT = 14156
 
@@ -119,7 +121,7 @@ data class Kryss(val id:Long?, val device:String, val type:Int, val count:Int, v
 
 class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boolean, var updated: Long) {
     var alcohol:Double = 0.0
-    val kryss = Array(KryssType.types.size) { _ -> 0 }
+    val kryss = Array(KryssType.types.size) { 0 }
     fun update(db: SQLiteDatabase) {
         val weight = weight
         if(weight != null) {
@@ -141,7 +143,7 @@ class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boo
     }
 
     fun alcoholDissipation(initialAlcohol:Double, dt:Long) : Double {
-        return Math.max(0.0, initialAlcohol - (if (male) 0.15 else 0.17) * dt / 3600000)
+        return max(0.0, initialAlcohol - (if (male) 0.15 else 0.17) * dt / 3600000)
     }
 
     fun bloodAlcoholIncreaseAfterDrink(drinkAlcohol:Double): Double? {
@@ -152,11 +154,11 @@ class Kamerer(val id: Long, val name: String, var weight: Double?, val male: Boo
 }
 
 
-class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
-    var intentFilter : IntentFilter = IntentFilter()
-    var receiver: WiFiDirectBroadcastReceiver? = null
+class MainActivity : FragmentActivity(), CoroutineScope by MainScope(), AnkoLogger {
+    private var intentFilter : IntentFilter = IntentFilter()
+    private var receiver: WiFiDirectBroadcastReceiver? = null
     var deviceId: String = ""
-    val VERSION = "groggomat 2018" // Also update app name
+    private val VERSION = "groggomat 2018" // Also update app name
 
     private var updater: ScheduledFuture<*>? = null
 
@@ -175,17 +177,17 @@ class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
         loadKamererer()
         loadKryss()
 
-        intentFilter = IntentFilter()
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
+//        intentFilter = IntentFilter()
+//        intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
+//        intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
+//        intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
+//        intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
+//
+//        val manager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
+//        val channel = manager.initialize(this, mainLooper, null)
+//        receiver = WiFiDirectBroadcastReceiver(manager, channel, this)
 
-        val manager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
-        val channel = manager.initialize(this, mainLooper, null)
-        receiver = WiFiDirectBroadcastReceiver(manager, channel, this)
-
-        fragmentManager
+        supportFragmentManager
                 .beginTransaction()
                 .replace(android.R.id.content, KamererListFragment())
                 .commit()
@@ -198,7 +200,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
 
     data class IdAndDevice(val id:Long, val device:String)
 
-    var kryssCache:MutableList<Kryss> = ArrayList<Kryss>()
+    var kryssCache:MutableList<Kryss> = ArrayList()
 
     private fun loadKryss() {
         database.use {
@@ -284,20 +286,20 @@ class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
 
     override fun onResume() {
         super.onResume()
-        registerReceiver(receiver, intentFilter)
+        if (receiver != null) registerReceiver(receiver, intentFilter)
         val sch = Executors.newScheduledThreadPool(1) as ScheduledThreadPoolExecutor
         updater = sch.scheduleAtFixedRate({ doAsync { uiThread { updateKryssLists(false) }} }, 60, 60, TimeUnit.SECONDS)
     }
 
     override fun onPause() {
         super.onPause()
-        unregisterReceiver(receiver)
+        if (receiver != null) unregisterReceiver(receiver)
         updater?.cancel(true)
     }
 
-    val syncing = Semaphore(1, true)
+    private val syncing = Semaphore(1, true)
 
-    fun syncKryss(outputStream:OutputStream, inputStream:InputStream) {
+    private fun syncKryss(outputStream:OutputStream, inputStream:InputStream) {
         syncing.acquire()
         try {
             database.use {
@@ -374,17 +376,17 @@ class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
         }
     }
 
-    val SERVER = "https://groggoserver.azurewebsites.net"
-    val TAG = "2018"
+    private val SERVER = "https://groggoserver.azurewebsites.net"
+    private val TAG = "2018"
 
-    val mapper = ObjectMapper()
+    val mapper: ObjectMapper = ObjectMapper()
             .registerKotlinModule()
             .setSerializationInclusion(JsonInclude.Include.NON_NULL)
             .configure(JsonGenerator.Feature.AUTO_CLOSE_TARGET, false)
             .configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, false)
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,false)
 
-    inline fun <reified T : Any> jacksonDeserializerOf() = object : ResponseDeserializable<T> {
+    private inline fun <reified T : Any> jacksonDeserializerOf() = object : ResponseDeserializable<T> {
         override fun deserialize(reader: Reader): T? {
             return mapper.readValue(reader)
         }
@@ -404,7 +406,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
 
     private suspend fun syncOnlineServer() {
         val manager = FuelManager()
-        manager.addRequestInterceptor(cUrlLoggingRequestInterceptor())
+        manager.addRequestInterceptor(LogRequestAsCurlInterceptor)
 
         syncing.acquire()
         try {
@@ -500,7 +502,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
 
     private var serverTask: Future<Unit>? = null
 
-    fun startServer() {
+    private fun startServer() {
         serverTask = doAsync {
             ServerSocket(PORT).use { serverSocket ->
                 info("Server listening on port $PORT")
@@ -530,7 +532,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
         }
     }
 
-    fun startClient(host:String) {
+    private fun startClient(host:String) {
         doAsync {
             try{
                 info("Starting Client")
@@ -642,14 +644,14 @@ class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
 
         if(id == R.id.action_stats) {
             val newFragment = StatsFragment()
-            fragmentManager.beginTransaction().replace(android.R.id.content, newFragment).addToBackStack(null).commit()
+            supportFragmentManager.beginTransaction().replace(android.R.id.content, newFragment).addToBackStack(null).commit()
             return true
         }
 
         if(id == R.id.action_sync_online) {
-            val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val activeNetwork = cm.activeNetworkInfo
-            if(activeNetwork?.isConnectedOrConnecting != true) {
+            val cm = this.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetwork = cm.getNetworkCapabilities(cm.activeNetwork)
+            if(activeNetwork?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) != true) {
                 toast("Needs internet connection!")
             } else {
                 toast("Syncing to online server")
@@ -657,7 +659,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
                     syncOnlineServer()
                 }
             }
-            return true;
+            return true
         }
 
         return super.onOptionsItemSelected(item)
@@ -773,7 +775,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
         else
             calculateKryss()
 
-        val fragment = fragmentManager.findFragmentById(android.R.id.content)
+        val fragment = supportFragmentManager.findFragmentById(android.R.id.content)
         info("updateKryssLists: $reload, $fragment")
         if(fragment is KamererListFragment) {
             fragment.updateData()
@@ -812,14 +814,18 @@ class MainActivity : Activity(), CoroutineScope by MainScope(), AnkoLogger {
         updateMenu()
     }
 
-    fun updateMenu() {
+    private fun updateMenu() {
         val wifiP2pInfo = wifiP2pInfo
         if(wifiP2pInfo != null) {
+            menu?.findItem(R.id.action_connect)?.isVisible = true
             menu?.findItem(R.id.action_connect)?.title = if (wifiP2pInfo.groupFormed) "Koppla från" else "Anslut"
             menu?.findItem(R.id.action_sync)?.isVisible = wifiP2pInfo.groupFormed && !wifiP2pInfo.isGroupOwner
             if (wifiP2pInfo.groupFormed && !wifiP2pInfo.isGroupOwner) {
                 menu?.findItem(R.id.action_sync)?.title = "Synka ${wifiP2pInfo.groupOwnerAddress.hostAddress}"
             }
+        }
+        else {
+            menu?.findItem(R.id.action_connect)?.isVisible = false
         }
     }
 }

@@ -4,10 +4,5 @@
     <style name="AppTheme" parent="android:Theme.Material">
     </style>
 
-    
-    <style name="KryssDialogAnimation">
-        <item name="android:windowEnterAnimation">@anim/dismiss_dialog</item>
-        <item name="android:windowExitAnimation">@anim/dismiss_dialog</item>
-    </style>
 
 </resources>

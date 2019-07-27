@@ -1,11 +1,10 @@
 package org.altekamereren.groggomat
 
-import android.app.Fragment
+import androidx.fragment.app.Fragment
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import org.jetbrains.anko.*
 import org.jetbrains.anko.db.*
-import java.util.*
 
 class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatabase", null, 10), AnkoLogger{
 
@@ -15,7 +14,7 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
         @Synchronized
         fun getInstance(ctx: Context): MyDatabaseOpenHelper {
             if (instance == null) {
-                instance = MyDatabaseOpenHelper(ctx.getApplicationContext())
+                instance = MyDatabaseOpenHelper(ctx.applicationContext)
             }
             return instance!!
         }
@@ -47,7 +46,7 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
                 .insert(db)
         }*/
 
-        var men = arrayOf(
+        val men = arrayOf(
                 "Anders \"Taggen\" Rosenqvist",
                 "Christoffer Svensson",
                 "Damir Basic Knezevic",
@@ -77,7 +76,7 @@ class MyDatabaseOpenHelper(ctx: Context) : ManagedSQLiteOpenHelper(ctx, "MyDatab
                 "Övrig man 1",
                 "Övrig man 2")
 
-        var women = arrayOf(
+        val women = arrayOf(
                 "Carolina Svensson",
                 "Elin Johansson",
                 "Elin Svensson",
@@ -114,5 +113,5 @@ val Context.database: MyDatabaseOpenHelper
     get() = MyDatabaseOpenHelper.getInstance(applicationContext)
 // Access property for Fragment
 val Fragment.database: MyDatabaseOpenHelper
-    get() = MyDatabaseOpenHelper.getInstance(activity.applicationContext)
+    get() = MyDatabaseOpenHelper.getInstance(activity!!.applicationContext)
 
