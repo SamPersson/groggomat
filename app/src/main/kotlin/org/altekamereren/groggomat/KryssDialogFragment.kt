@@ -17,7 +17,7 @@ class KryssDialogFragment : DialogFragment() {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         val v = inflater.inflate(R.layout.kryss_dialog, container, false)
-        dialog.setCanceledOnTouchOutside(false)
+        dialog?.setCanceledOnTouchOutside(false)
 
         val kamererId = arguments!!.getLong("kamerer")
         val kamerer = (ctx as MainActivity).kamererer[kamererId]!!
@@ -76,7 +76,7 @@ class KryssDialogFragment : DialogFragment() {
 
             (ctx as MainActivity).updateKryssLists(replaces_id != null)
 
-            dialog.dismiss();
+            dialog?.dismiss();
         }
         v.kryssa.isEnabled = false
 

@@ -569,11 +569,11 @@ class MainActivity : FragmentActivity(), CoroutineScope by MainScope(), AnkoLogg
 
     private val PERMISSIONS_REQUEST_STORAGE: Int = 1
 
-    override fun onOptionsItemSelected(item: MenuItem?): Boolean {
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
         // Handle action bar item clicks here. The action bar will
         // automatically handle clicks on the Home/Up button, so long
         // as you specify a parent activity in AndroidManifest.xml.
-        val id = item!!.itemId
+        val id = item.itemId
 
         val wifiP2pInfo = wifiP2pInfo
         val receiver = receiver
@@ -591,15 +591,26 @@ class MainActivity : FragmentActivity(), CoroutineScope by MainScope(), AnkoLogg
             } else {
                 searchingForPeers = true
                 toast("Searching for peers")
-                receiver.manager.discoverPeers(receiver.channel, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() {
-                    }
+                if (ActivityCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1);
+                }
+                else {
+                    receiver.manager.discoverPeers(
+                        receiver.channel,
+                        object : WifiP2pManager.ActionListener {
+                            override fun onSuccess() {
+                            }
 
-                    override fun onFailure(reason: Int) {
-                        searchingForPeers = false
-                        toast("Failed to discover peers: $reason")
-                    }
-                })
+                            override fun onFailure(reason: Int) {
+                                searchingForPeers = false
+                                toast("Failed to discover peers: $reason")
+                            }
+                        })
+                }
             }
 
             return true
@@ -675,15 +686,10 @@ class MainActivity : FragmentActivity(), CoroutineScope by MainScope(), AnkoLogg
                     // permission denied, boo! Disable the
                     // functionality that depends on this permission.
                 }
-                return
-            }
-
-        // Add other 'when' lines to check for other
-        // permissions this app might request.
-            else -> {
-                // Ignore all other requests.
             }
         }
+
+        return super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
 
     private fun exportData() {
@@ -757,6 +763,22 @@ class MainActivity : FragmentActivity(), CoroutineScope by MainScope(), AnkoLogg
     private fun connectToDevice(d: WifiP2pDevice) {
         val config = WifiP2pConfig()
         config.deviceAddress = d.deviceAddress
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1);
+            return
+        }
+
         receiver?.manager?.connect(receiver?.channel, config, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
                 toast("Connected to ${d.deviceAddress}")

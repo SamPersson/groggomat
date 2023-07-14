@@ -52,6 +52,7 @@ class KamererListFragmentUI(private val kamerer: Kamerer = Kamerer(1,"Test", 50.
 
 class KamererListFragment : ListFragment() {
 
+    @Deprecated("Deprecated in Java")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
 
@@ -99,7 +100,7 @@ class KamererListFragment : ListFragment() {
         }
     }
 
-    override fun onListItemClick(l: ListView?, v: View?, position: Int, id: Long) {
+    override fun onListItemClick(l: ListView, v: View, position: Int, id: Long) {
         val ft = fragmentManager!!.beginTransaction()
         val prev = fragmentManager!!.findFragmentByTag("dialog")
         if (prev != null) {
