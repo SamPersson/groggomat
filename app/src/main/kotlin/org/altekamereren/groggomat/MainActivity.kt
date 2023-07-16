@@ -2,11 +2,13 @@ package org.altekamereren.groggomat
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteDatabase
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pInfo
@@ -16,8 +18,10 @@ import android.os.Environment
 import android.util.LongSparseArray
 import android.view.Menu
 import android.view.MenuItem
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.FragmentActivity
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.core.JsonGenerator
@@ -623,7 +627,7 @@ class MainActivity : FragmentActivity(), CoroutineScope by MainScope(), AnkoLogg
 
         if (id == R.id.action_export) {
             if (ContextCompat.checkSelfPermission(this,
-                            Manifest.permission.READ_CONTACTS)
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE)
                     != PackageManager.PERMISSION_GRANTED) {
 
                 // Permission is not granted
@@ -638,10 +642,6 @@ class MainActivity : FragmentActivity(), CoroutineScope by MainScope(), AnkoLogg
                     ActivityCompat.requestPermissions(this,
                             arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
                             PERMISSIONS_REQUEST_STORAGE)
-
-                    // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
-                    // app-defined int constant. The callback method gets the
-                    // result of the request.
                 //}
             } else {
                 exportData()
@@ -692,59 +692,91 @@ class MainActivity : FragmentActivity(), CoroutineScope by MainScope(), AnkoLogg
         return super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
 
+    private val openExportDir = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            // take persistable Uri Permission for future use
+            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            this.contentResolver.takePersistableUriPermission(uri, takeFlags)
+            val preferences = this.getPreferences(Context.MODE_PRIVATE)
+            preferences.edit().putString("exportStorageUri", uri.toString()).apply()
+
+            DocumentFile.fromTreeUri(this, uri)?.let {
+                exportData(it)
+            }
+
+        }
+    }
+
     private fun exportData() {
+        val preferences = this.getPreferences(Context.MODE_PRIVATE)
+        preferences.getString("exportStorageUri", null)?.let { uri ->
+            val documentFile = DocumentFile.fromTreeUri(this, Uri.parse(uri));
+            if (documentFile != null && documentFile.canWrite()) {
+                exportData(documentFile)
+                return
+            }
+        }
+
+        openExportDir.launch(null);
+    }
+
+    private fun exportData(dir: DocumentFile) {
         val date = SimpleDateFormat("yyyyMMdd-hhmmss", Locale.US).format(Date())
-        val dir = File(Environment.getExternalStorageDirectory().absolutePath + "/groggomat")
-        dir.mkdirs()
 
-        val file = File(dir, "$date.xls")
+        val excelFile = dir.createFile("application/ms-excel", "$date.xls")
+        this.contentResolver.openFileDescriptor(excelFile!!.uri, "w")?.use { pfd ->
+            FileOutputStream(pfd.fileDescriptor).use { excelOutputStream ->
+                val wbSettings = WorkbookSettings()
+                wbSettings.locale = Locale("en", "EN")
+                val workbook = Workbook.createWorkbook(excelOutputStream, wbSettings)
+                val sheet = workbook.createSheet("Kryss", 0)
+                val cols = arrayOf("kamerer", "time", "type", "count")
+                for (i in cols.indices) {
+                    sheet.addCell(Label(i, 0, cols[i]))
+                }
+                for (i in kryssCache.indices) {
+                    val kryss = kryssCache[i]
+                    sheet.addCell(Label(0, i + 1, kamererer[kryss.kamerer]!!.name))
+                    sheet.addCell(DateTime(1, i + 1, Date(kryss.time)))
+                    sheet.addCell(Label(2, i + 1, KryssType.types[kryss.type].name))
+                    sheet.addCell(Number(3, i + 1, kryss.count.toDouble()))
+                }
 
-        val wbSettings = WorkbookSettings()
-        wbSettings.locale = Locale("en", "EN")
-        val workbook = Workbook.createWorkbook(file, wbSettings)
-        val sheet = workbook.createSheet("Kryss", 0)
-        val cols = arrayOf("kamerer", "time", "type", "count")
-        for (i in cols.indices) {
-            sheet.addCell(Label(i, 0, cols[i]))
-        }
-        for (i in kryssCache.indices) {
-            val kryss = kryssCache[i]
-            sheet.addCell(Label(0, i + 1, kamererer[kryss.kamerer]!!.name))
-            sheet.addCell(DateTime(1, i + 1, Date(kryss.time)))
-            sheet.addCell(Label(2, i + 1, KryssType.types[kryss.type].name))
-            sheet.addCell(Number(3, i + 1, kryss.count.toDouble()))
-        }
+                val sheetKamerer = workbook.createSheet("Kamererer", 1)
+                val colsKamerer = arrayOf("kamerer", "sex", "weight") + KryssType.types.map { (name) -> name }
+                for (i in colsKamerer.indices) {
+                    sheetKamerer.addCell(Label(i, 0, colsKamerer[i]))
+                }
 
-        val sheetKamerer = workbook.createSheet("Kamererer", 1)
-        val colsKamerer = arrayOf("kamerer", "sex", "weight") + KryssType.types.map { (name) -> name }
-        for (i in colsKamerer.indices) {
-            sheetKamerer.addCell(Label(i, 0, colsKamerer[i]))
-        }
+                var row = 0
+                for (kamerer in kamererer.values.sortedBy { it.name }) {
+                    row++
+                    sheetKamerer.addCell(Label(0, row, kamerer.name))
+                    sheetKamerer.addCell(Label(1, row, if (kamerer.male) "man" else "woman"))
+                    val w = kamerer.weight
+                    if (w != null) {
+                        sheetKamerer.addCell(Number(2, row, w))
+                    }
+                    for (i in KryssType.types.indices) {
+                        sheetKamerer.addCell(Number(3 + i, row, kamerer.kryss[i].toDouble()))
+                    }
+                }
 
-        var row = 0
-        for (kamerer in kamererer.values.sortedBy { it.name }) {
-            row++
-            sheetKamerer.addCell(Label(0, row, kamerer.name))
-            sheetKamerer.addCell(Label(1, row, if (kamerer.male) "man" else "woman"))
-            val w = kamerer.weight
-            if (w != null) {
-                sheetKamerer.addCell(Number(2, row, w))
+                workbook.write()
+                workbook.close()
+
+                toast("Wrote data to ${excelFile.name}")
             }
-            for (i in KryssType.types.indices) {
-                sheetKamerer.addCell(Number(3 + i, row, kamerer.kryss[i].toDouble()))
-            }
         }
 
-        workbook.write()
-        workbook.close()
-
-        toast("Wrote data to ${file.absolutePath}")
-
-        OutputStreamWriter(FileOutputStream(File(dir, "$date-raw.csv"))).use { writer ->
-            writer.write("id, device, type, count, time, kamerer, replaces_id, replaces_device\n")
-            database.use {
-                for (kryss in select("Kryss", *Kryss.selectList).parseList(Kryss.parser)) {
-                    writer.write("${kryss.id}, ${kryss.device}, ${kryss.type}, ${kryss.count}, ${kryss.time}, ${kryss.kamerer}, ${kryss.replacesId}, ${kryss.replacesDevice}\n")
+        val csvFile = dir.createFile("text/csv", "$date-raw.csv")
+        this.contentResolver.openFileDescriptor(csvFile!!.uri, "w")?.use { pfd ->
+            OutputStreamWriter(FileOutputStream(pfd.fileDescriptor)).use { writer ->
+                writer.write("id, device, type, count, time, kamerer, replaces_id, replaces_device\n")
+                database.use {
+                    for (kryss in select("Kryss", *Kryss.selectList).parseList(Kryss.parser)) {
+                        writer.write("${kryss.id}, ${kryss.device}, ${kryss.type}, ${kryss.count}, ${kryss.time}, ${kryss.kamerer}, ${kryss.replacesId}, ${kryss.replacesDevice}\n")
+                    }
                 }
             }
         }
